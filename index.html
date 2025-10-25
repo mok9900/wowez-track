@@ -23,9 +23,9 @@
 
             <!-- 로그인/상태 영역 -->
             <div id="auth-status" class="mb-6 text-center">
-                <p id="status-message" class="text-lg text-indigo-600 mb-4">로그인 대기 중...</p>
-                <button id="google-login-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition duration-200">
-                    Google로 로그인
+                <p id="status-message" class="text-lg text-indigo-600 mb-4">플랫폼 인증 확인 중...</p>
+                <button id="google-login-btn" class="bg-gray-300 text-gray-700 font-bold py-2 px-6 rounded-lg shadow-md transition duration-200" disabled>
+                    인증 중 (자동)
                 </button>
                 <button id="logout-btn" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition duration-200 ml-4">
                     로그아웃
@@ -72,17 +72,29 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // 사용자 제공 Firebase 설정
-            const firebaseConfig = {
-                apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY",
-                authDomain: "track-ez-9ecb7.firebaseapp.com",
-                projectId: "track-ez-9ecb7",
-                storageBucket: "track-ez-9ecb7.firebasestorage.app",
-                messagingSenderId: "893851585207",
-                appId: "1:893851585207:web:ba248d9bcab0d793361b32",
-                measurementId: "G-E69E7TLNZN"
-            };
+            // NOTE: Canvas 환경에서는 외부 로그인(Popup/Redirect)이 작동하지 않습니다.
+            // 대신, Canvas에서 제공하는 전역 변수(__app_id, __firebase_config, __initial_auth_token)를 사용하여 인증을 처리합니다.
             
+            // 전역 변수 로드 (Canvas 환경 필수 요소)
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            let firebaseConfig = {};
+            try {
+                firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+            } catch (e) {
+                console.error("Firebase Config 파싱 오류:", e);
+                // 오류 발생 시 기본 config 사용 (오류 해결 후 사용자에게 재요청)
+                firebaseConfig = {
+                    apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY",
+                    authDomain: "track-ez-9ecb7.firebaseapp.com",
+                    projectId: "track-ez-9ecb7",
+                    storageBucket: "track-ez-9ecb7.firebasestorage.app",
+                    messagingSenderId: "893851585207",
+                    appId: "1:893851585207:web:ba248d9bcab0d793361b32",
+                    measurementId: "G-E69E7TLNZN"
+                };
+            }
+            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
             // 인가된 관리자 이메일 목록
             const AUTHORIZED_USERS = [
                 "menda_427@naver.com",
@@ -99,78 +111,70 @@
             const noLogsMessage = document.getElementById('no-logs-message');
 
             // Firebase 초기화
-            let db, auth, provider;
-            let appId = 'track-ez-9ecb7';
+            let db, auth;
             
-            try {
-                const app = firebase.initializeApp(firebaseConfig);
-                db = firebase.firestore();
-                auth = firebase.auth();
-                provider = new firebase.auth.GoogleAuthProvider();
-                // db.settings({ logLevel: 'debug' }); // 디버깅용 로그 레벨 설정
-            } catch (error) {
-                console.error("Firebase 초기화 오류:", error);
-                statusMessage.textContent = "오류: Firebase 초기화 실패. (콘솔 확인)";
-                statusMessage.classList.add('text-red-500');
-                googleLoginBtn.disabled = true;
-                return;
+            async function initFirebase() {
+                try {
+                    const app = firebase.initializeApp(firebaseConfig);
+                    db = firebase.firestore();
+                    auth = firebase.auth();
+                    
+                    // 디버깅을 위해 로그 레벨 설정
+                    // db.settings({ logLevel: 'debug' });
+                    // firebase.auth.setLogLevel('debug');
+
+                    // Canvas 환경에 맞는 인증 처리 (Custom Token 또는 익명 로그인)
+                    if (initialAuthToken) {
+                        statusMessage.textContent = "플랫폼 인증 토큰으로 로그인 중...";
+                        await auth.signInWithCustomToken(initialAuthToken);
+                        console.log("Canvas Custom Token으로 로그인 성공.");
+                    } else {
+                        statusMessage.textContent = "익명으로 로그인 중...";
+                        // 익명 로그인은 Firestore 규칙상 Public/Private 데이터에 접근이 제한될 수 있습니다.
+                        await auth.signInAnonymously(); 
+                        console.log("Canvas 환경에서 익명 로그인 성공.");
+                    }
+
+                    // *** 수정된 부분: auth 객체가 정의된 후에 리스너를 설정합니다. ***
+                    
+                    // 1. 인증 상태 변경 리스너 설정
+                    auth.onAuthStateChanged(user => {
+                        if (user) {
+                            handleSignIn(user);
+                        } else {
+                            handleSignOut();
+                        }
+                    });
+
+                    // 2. 로그아웃 버튼 클릭 핸들러 (auth가 정의된 후 등록)
+                    logoutBtn.addEventListener('click', () => {
+                        auth.signOut();
+                    });
+                    // *** 수정된 부분 끝 ***
+                    
+                } catch (error) {
+                    console.error("Firebase 초기화 또는 인증 오류:", error);
+                    statusMessage.textContent = `오류: 초기 인증 실패. (${error.code || error.message})`;
+                    statusMessage.classList.remove('text-indigo-600');
+                    statusMessage.classList.add('text-red-500');
+                }
             }
 
-            // Google Redirect 로그인 결과 처리 (페이지 로드 시 실행)
-            auth.getRedirectResult()
-                .then((result) => {
-                    if (result.user) {
-                        // 로그인 성공 (onAuthStateChanged에서 처리됨)
-                        console.log("Redirect 로그인 성공:", result.user.email);
-                    }
-                })
-                .catch((error) => {
-                    // 리디렉션 처리 중 오류 발생
-                    console.error("Redirect 로그인 결과 오류:", error);
-                    statusMessage.textContent = `로그인 오류: ${error.message}`;
-                    statusMessage.classList.remove('text-indigo-600');
-                    statusMessage.classList.add('text-red-500');
-                });
-
             // =================================================================
-            // 1. 인증 및 접근 제어 로직
+            // 1. 인증 및 접근 제어 로직 (함수만 남기고 리스너는 initFirebase로 이동)
             // =================================================================
 
-            auth.onAuthStateChanged(user => {
-                if (user) {
-                    handleSignIn(user);
-                } else {
-                    handleSignOut();
-                }
-            });
-
-            // 로그인 버튼 클릭 핸들러
-            googleLoginBtn.addEventListener('click', async () => {
-                try {
-                    statusMessage.textContent = "Google 로그인으로 리디렉션 중...";
-                    // 환경 제약으로 인해 signInWithPopup 대신 signInWithRedirect 사용
-                    await auth.signInWithRedirect(provider); // <-- signInWithRedirect로 변경
-                } catch (error) {
-                    console.error("Google 로그인 실패:", error);
-                    statusMessage.textContent = "로그인 실패: 환경에서 팝업이 지원되지 않습니다.";
-                    statusMessage.classList.remove('text-indigo-600');
-                    statusMessage.classList.add('text-red-500');
-                }
-            });
-            
-            // 로그아웃 버튼 클릭 핸들러
-            logoutBtn.addEventListener('click', () => {
-                auth.signOut();
-            });
+            // Google 로그인 버튼 역할 변경: 자동 인증을 사용하므로, 이 버튼은 상태 표시용입니다.
+            googleLoginBtn.disabled = true;
 
             // 로그인 성공 처리
             async function handleSignIn(user) {
                 const userEmail = user.email;
-                
-                if (AUTHORIZED_USERS.includes(userEmail)) {
+
+                if (userEmail && AUTHORIZED_USERS.includes(userEmail)) {
                     // 1. 인가된 사용자
                     statusMessage.textContent = `접근 허용됨. 관리자: ${userEmail}`;
-                    statusMessage.classList.remove('text-red-500');
+                    statusMessage.classList.remove('text-red-500', 'text-indigo-600');
                     statusMessage.classList.add('text-green-600');
                     
                     googleLoginBtn.classList.add('hidden');
@@ -179,29 +183,33 @@
                     
                     fetchLogs(); // 로그 불러오기 시작
                 } else {
-                    // 2. 인가되지 않은 사용자 (침입자)
-                    const unauthorizedEmail = user.email || user.uid;
-                    await logIntruder(unauthorizedEmail);
+                    // 2. 인가되지 않은 사용자 (익명 사용자 포함)
+                    const unauthorizedId = userEmail || user.uid;
 
-                    statusMessage.textContent = `접근 거부됨. 계정: ${unauthorizedEmail}`;
-                    statusMessage.classList.remove('text-indigo-600');
+                    // 익명 로그인이 아닌 실제 계정으로 접속했으나 인가되지 않은 경우에만 침입자 로그 기록
+                    if (user.isAnonymous === false) {
+                        await logIntruder(unauthorizedId);
+                    }
+
+                    statusMessage.textContent = `접근 거부됨. 계정: ${unauthorizedId.substring(0, 15)}...`;
+                    statusMessage.classList.remove('text-indigo-600', 'text-green-600');
                     statusMessage.classList.add('text-red-500');
                     
+                    googleLoginBtn.textContent = "로그인된 사용자 아님";
                     googleLoginBtn.classList.remove('hidden');
                     logoutBtn.classList.add('hidden');
                     logViewer.classList.add('hidden');
-                    
-                    // 접근 거부 후 강제 로그아웃
-                    auth.signOut();
                 }
             }
             
             // 로그아웃 처리
             function handleSignOut() {
-                statusMessage.textContent = "로그인 대기 중...";
+                statusMessage.textContent = "인증 대기 중 (새로고침이 필요할 수 있습니다)";
                 statusMessage.classList.remove('text-green-600', 'text-red-500');
                 statusMessage.classList.add('text-indigo-600');
                 
+                googleLoginBtn.textContent = "인증 상태 확인";
+                googleLoginBtn.disabled = true;
                 googleLoginBtn.classList.remove('hidden');
                 logoutBtn.classList.add('hidden');
                 logViewer.classList.add('hidden');
@@ -256,29 +264,38 @@
 
                         noLogsMessage.classList.add('hidden');
                         
+                        // 데이터 정렬 (Firestore 인덱스 오류를 피하기 위해 JavaScript에서 정렬)
+                        const sortedLogs = [];
                         snapshot.forEach(doc => {
-                            count++;
-                            const log = doc.data();
-                            const docId = doc.id;
-                            // 경로에서 원본 컬렉션 ID 추출 (삭제 시 필요)
-                            const pathSegments = doc.ref.path.split('/'); 
-                            // 예: artifacts/track-ez-9ecb7/users/uid_abc/visitor_logs/log_doc_id
-                            // 3번째 세그먼트가 {userId}가 됨 (index 3)
-                            const visitorUid = pathSegments[3]; 
+                            sortedLogs.push({
+                                docId: doc.id,
+                                visitorUid: doc.ref.path.split('/')[3],
+                                ...doc.data()
+                            });
+                        });
+                        
+                        sortedLogs.sort((a, b) => {
+                            const timeA = a.timestamp ? a.timestamp.toDate().getTime() : 0;
+                            const timeB = b.timestamp ? b.timestamp.toDate().getTime() : 0;
+                            return timeB - timeA; // 최신 순으로 정렬
+                        });
 
-                            const timestamp = log.timestamp ? new Date(log.timestamp.toDate()).toLocaleString('ko-KR') : 'N/A';
+
+                        sortedLogs.forEach(logData => {
+                            count++;
+                            const timestamp = logData.timestamp ? new Date(logData.timestamp.toDate()).toLocaleString('ko-KR') : 'N/A';
 
                             const row = document.createElement('tr');
                             row.innerHTML = `
                                 <td>${timestamp}</td>
-                                <td class="text-sm truncate max-w-xs" title="${log.user_id}">${log.user_id.substring(0, 8)}...</td>
-                                <td>${log.ip_address || 'N/A'}</td>
-                                <td>${log.location_country || 'N/A'}</td>
-                                <td>${log.isp_info || 'N/A'}</td>
-                                <td>${log.browser || 'N/A'}</td>
-                                <td class="text-xs truncate max-w-xs" title="${log.user_agent}">${log.user_agent.substring(0, 30)}...</td>
+                                <td class="text-sm truncate max-w-xs" title="${logData.user_id}">${logData.user_id.substring(0, 8)}...</td>
+                                <td>${logData.ip_address || 'N/A'}</td>
+                                <td>${logData.location_country || 'N/A'}</td>
+                                <td>${logData.isp_info || 'N/A'}</td>
+                                <td>${logData.browser || 'N/A'}</td>
+                                <td class="text-xs truncate max-w-xs" title="${logData.user_agent}">${logData.user_agent.substring(0, 30)}...</td>
                                 <td class="text-center">
-                                    <button data-doc-id="${docId}" data-visitor-uid="${visitorUid}" 
+                                    <button data-doc-id="${logData.docId}" data-visitor-uid="${logData.visitorUid}" 
                                             class="delete-btn text-red-500 hover:text-red-700 font-medium">
                                         삭제
                                     </button>
@@ -289,8 +306,8 @@
                         
                         logCount.textContent = `총 ${count}개 기록`;
                     }, error => {
-                        console.error("로그 불러오기 오류 (인덱스 필요 가능):", error);
-                        statusMessage.textContent = "로그 불러오기 오류. Firestore 인덱스를 확인하십시오.";
+                        console.error("로그 불러오기 오류:", error);
+                        statusMessage.textContent = "로그 불러오기 오류. 콘솔을 확인하십시오.";
                         statusMessage.classList.add('text-red-500');
                     });
             }
@@ -302,6 +319,7 @@
                     const docId = btn.dataset.docId;
                     const visitorUid = btn.dataset.visitorUid;
                     
+                    // NOTE: confirm() 대신 커스텀 모달 UI 사용 권장
                     if (confirm('정말로 이 로그를 삭제하시겠습니까?')) {
                         deleteLog(docId, visitorUid, btn);
                     }
@@ -322,11 +340,15 @@
                     // onSnapshot에 의해 자동으로 UI에서 제거됨
                 } catch (error) {
                     console.error("로그 삭제 오류:", error);
+                    // NOTE: alert() 대신 커스텀 모달 UI 사용 권장
                     alert(`로그 삭제에 실패했습니다. (오류: ${error.message})`);
                     btnElement.disabled = false;
                     btnElement.textContent = '삭제';
                 }
             }
+
+            // 페이지 로드 시 Firebase 초기화 및 인증 시작
+            initFirebase();
         });
     </script>
 </body>
