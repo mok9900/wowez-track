@@ -3,69 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>관리자 대시보드</title>
-    <!-- Tailwind CSS CDN을 사용하여 간단한 스타일링 적용 -->
+    <title>관리자 대시보드 | Visitor Log</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f7f9fb; }
-        .log-table th, .log-table td { padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
-        .log-table th { background-color: #eef2ff; color: #4338ca; font-weight: 700; }
-        .log-table tr:hover { background-color: #f3f4f6; }
+        /* 다크 모드와 고대비 설정을 위한 기본 스타일 */
+        body { 
+            font-family: 'Inter', 'Noto Sans KR', sans-serif; 
+            background-color: #0f172a; /* Slate-900보다 더 짙은 배경 */
+            color: #e2e8f0; /* 밝은 회색 텍스트 */
+        }
+        .log-table th, .log-table td { 
+            padding: 1rem 0.75rem; 
+            text-align: left; 
+            border-bottom: 1px solid #374151; /* 짙은 구분선 */
+        }
+        .log-table th { 
+            background-color: #1f2937; /* Gray-800 헤더 배경 */
+            color: #a5b4fc; /* Indigo-300 강조색 */
+            font-weight: 700; 
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+        /* 데이터 가독성을 위한 열 너비 조정 및 색상 변경 */
+        .log-table tbody tr {
+            transition: background-color 0.2s;
+        }
+        .log-table tbody tr:hover { 
+            background-color: #374151; /* Hover 시 Gray-700 */
+        }
+        /* 스크롤바 디자인 (Webkit) */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 4px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+
     </style>
 </head>
 <body>
-    <div id="app" class="min-h-screen flex flex-col items-center justify-center p-4">
+    <div id="app" class="min-h-screen flex flex-col items-center p-4 sm:p-8">
         
-        <!-- 중앙 컨테이너 -->
-        <div class="w-full max-w-4xl bg-white shadow-xl rounded-lg p-8">
-            <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">방문자 로그 관리 시스템</h1>
+        <!-- 중앙 컨테이너 (더 넓게, 더 깊이있게) -->
+        <div class="w-full max-w-7xl bg-gray-800 border border-gray-700 shadow-2xl shadow-indigo-900/50 rounded-xl p-6 sm:p-10 my-8">
+            <header class="mb-8 border-b border-indigo-700 pb-4">
+                <h1 class="text-4xl font-extrabold text-indigo-400 text-center tracking-wider">
+                    관리자 대시보드 
+                    <span class="block text-sm font-light text-gray-400 mt-1">Ergonomic Visitor Log System</span>
+                </h1>
+            </header>
 
             <!-- 로그인/상태 영역 -->
-            <div id="auth-status" class="mb-6 text-center">
-                <p id="status-message" class="text-lg text-indigo-600 mb-4">관리자 계정으로 로그인이 필요합니다.</p>
+            <div id="auth-status" class="mb-8 text-center bg-gray-700 p-4 rounded-lg border border-indigo-500/30">
+                <p id="status-message" class="text-lg font-medium text-indigo-400 mb-4 transition duration-300">
+                    관리자 계정으로 로그인이 필요합니다.
+                </p>
                 
                 <!-- Google 로그인 버튼 -->
-                <button id="google-login-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition duration-200">
+                <button id="google-login-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg shadow-indigo-600/50 transition duration-300 transform hover:scale-[1.02]">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="inline-block align-middle mr-2">
+                        <path d="M21.57,8.23H24V12H21.57a10.08,10.08,0,0,1-.17,1.86,9.91,9.91,0,0,1-3.6,5.33,9.75,9.75,0,0,1-5.75,1.76A10,10,0,1,1,21.57,8.23Z" fill="#4285f4"/>
+                        <path d="M12,2A10,10,0,0,0,4.24,19.24L7.5,15.98a5.95,5.95,0,0,1,8.4-8.4L21.57,8.23Z" fill="#34a853"/>
+                        <path d="M12,2A10,10,0,0,0,2,12h2.43a7.57,7.57,0,0,1,15.14,0h2.43A10,10,0,0,0,12,2Z" fill="#fbbc05"/>
+                        <path d="M12,22A10,10,0,0,0,21.57,8.23H17.8a6,6,0,0,1-4.72,11.23,6,6,0,0,1-5.75-1.76L4.24,19.24A10,10,0,0,0,12,22Z" fill="#ea4335"/>
+                    </svg>
                     Google 계정으로 로그인
                 </button>
-                <button id="logout-btn" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition duration-200 ml-4">
+                <button id="logout-btn" class="hidden bg-red-700 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg shadow-red-700/50 transition duration-300 transform hover:scale-[1.02] ml-4">
                     로그아웃
                 </button>
             </div>
 
             <!-- 로그 데이터 영역 (로그인 후 표시) -->
             <div id="log-viewer" class="hidden">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-2xl font-semibold text-gray-700">방문자 기록</h2>
-                    <p id="log-count" class="text-sm text-gray-500">총 0개 기록</p>
+                <div class="flex flex-col sm:flex-row justify-between items-center mb-6">
+                    <h2 class="text-2xl font-semibold text-gray-200 mb-2 sm:mb-0">방문자 기록 분석</h2>
+                    <p id="log-count" class="text-sm text-indigo-400 font-mono bg-gray-700 py-1 px-3 rounded-md">총 0개 기록</p>
                 </div>
 
-                <div id="rule-error-message" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded" role="alert">
+                <div id="rule-error-message" class="hidden bg-yellow-900 border-l-4 border-yellow-500 text-yellow-300 p-4 mb-4 rounded-lg" role="alert">
                     <p class="font-bold">🚨 권한 오류 해결 필수!</p>
-                    <p class="text-sm">로그 데이터가 보이지 않는다면, **Firebase Firestore 보안 규칙**이 누락되었을 수 있습니다. 상단의 설명을 참고하여 Firebase 콘솔에 규칙을 적용해주세요.</p>
+                    <p class="text-sm">로그 데이터가 보이지 않는다면, **Firebase Firestore 보안 규칙**을 확인하고 관리자 계정으로 로그인했는지 확인해주세요.</p>
                 </div>
 
-                <div class="overflow-x-auto rounded-lg border border-gray-200">
-                    <table class="min-w-full divide-y divide-gray-200 log-table">
+                <!-- 인체공학적 스크롤링 테이블 컨테이너 -->
+                <div class="overflow-x-auto rounded-xl border border-gray-700 shadow-inner shadow-gray-900/50">
+                    <table class="min-w-full divide-y divide-gray-700 log-table">
                         <thead>
                             <tr>
-                                <th>시간</th>
-                                <th>사용자 ID</th>
+                                <th class="w-[120px]">시간</th>
+                                <th class="w-[100px]">사용자 ID</th>
                                 <th>IP 주소</th>
                                 <th>국가</th>
                                 <th>ISP</th>
                                 <th>브라우저</th>
-                                <th>기기 정보</th>
-                                <th class="text-center">삭제</th>
+                                <th class="w-[150px]">기기 정보 (User Agent)</th>
+                                <th class="text-center w-[60px]">삭제</th>
                             </tr>
                         </thead>
-                        <tbody id="logs-body" class="bg-white divide-y divide-gray-200">
+                        <tbody id="logs-body" class="bg-gray-800 divide-y divide-gray-700">
                             <!-- Logs will be inserted here -->
                         </tbody>
                     </table>
                 </div>
-                <div id="no-logs-message" class="text-center text-gray-500 mt-4 hidden">
+                <div id="no-logs-message" class="text-center text-gray-500 mt-8 py-4 border-t border-gray-700 hidden">
                     기록된 방문자 로그가 없습니다.
                 </div>
             </div>
@@ -103,7 +143,7 @@
             // 1. Firebase 구성 정보 (하드코딩)
             // =================================================================
             const firebaseConfig = {
-                // 사용자님께서 제공하신 새로운 API Key를 적용했습니다.
+                // 사용자님께서 제공하신 API Key를 사용합니다.
                 apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY", 
                 authDomain: "track-ez-9ecb7.firebaseapp.com",
                 projectId: "track-ez-9ecb7",
@@ -159,7 +199,7 @@
                 } catch (error) {
                     console.error("Firebase 초기화 오류:", error);
                     statusMessage.textContent = `⛔ 치명적 오류: Firebase 초기화 실패. (콘솔 확인)`;
-                    statusMessage.classList.remove('text-indigo-600');
+                    statusMessage.classList.remove('text-indigo-400');
                     statusMessage.classList.add('text-red-500');
                     googleLoginBtn.disabled = true; 
                     googleLoginBtn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -180,7 +220,7 @@
                 googleLoginBtn.textContent = '인증 팝업 표시 중...';
                 statusMessage.textContent = 'Google 인증 팝업을 확인해주세요.';
                 statusMessage.classList.remove('text-red-500');
-                statusMessage.classList.add('text-indigo-600');
+                statusMessage.classList.add('text-indigo-400');
 
                 try {
                     const provider = new GoogleAuthProvider();
@@ -202,7 +242,7 @@
                     }
                     
                     statusMessage.textContent = errorMessage;
-                    statusMessage.classList.remove('text-indigo-600');
+                    statusMessage.classList.remove('text-indigo-400');
                     statusMessage.classList.add('text-red-500');
                     
                     // 버튼 상태 초기화
@@ -220,8 +260,8 @@
                 if (isAuthenticated) {
                     // 1. 인가된 사용자
                     statusMessage.textContent = `접근 허용됨. 관리자: ${userEmail}`;
-                    statusMessage.classList.remove('text-red-500', 'text-indigo-600');
-                    statusMessage.classList.add('text-green-600');
+                    statusMessage.classList.remove('text-red-500', 'text-indigo-400');
+                    statusMessage.classList.add('text-green-400');
                     
                     googleLoginBtn.classList.add('hidden'); 
                     logoutBtn.classList.remove('hidden');
@@ -237,7 +277,7 @@
                     await logIntruder(unauthorizedId);
 
                     statusMessage.textContent = `접근 거부됨. 관리자 계정(${AUTHORIZED_USERS.join(', ')})이 아닙니다. 현재 계정: ${displayId}`;
-                    statusMessage.classList.remove('text-indigo-600', 'text-green-600');
+                    statusMessage.classList.remove('text-indigo-400', 'text-green-400');
                     statusMessage.classList.add('text-red-500');
                     
                     googleLoginBtn.classList.add('hidden'); 
@@ -252,8 +292,8 @@
             // 로그아웃 처리
             function handleSignOut() {
                 statusMessage.textContent = "관리자 계정으로 로그인이 필요합니다.";
-                statusMessage.classList.remove('text-green-600', 'text-red-500');
-                statusMessage.classList.add('text-indigo-600');
+                statusMessage.classList.remove('text-green-400', 'text-red-500');
+                statusMessage.classList.add('text-indigo-400');
                 
                 googleLoginBtn.textContent = 'Google 계정으로 로그인';
                 googleLoginBtn.disabled = false;
@@ -272,7 +312,6 @@
 
             // 침입자 로그 기록 함수
             async function logIntruder(attemptedId) {
-                // ... (생략: 기존 코드와 동일) ...
                 if (!db) return;
 
                 let ip = 'N/A';
@@ -324,8 +363,8 @@
                             const pathParts = doc.ref.path.split('/');
                             sortedLogs.push({
                                 docId: doc.id,
-                                // **NEW:** 경로에서 실제 App ID를 추출하여 저장합니다.
-                                appIdFromDb: pathParts[1], // /artifacts/{appId}/users/{visitorUid}/visitor_logs/{docId}
+                                // 경로에서 실제 App ID를 추출하여 저장합니다.
+                                appIdFromDb: pathParts[1], 
                                 visitorUid: pathParts[3], 
                                 ...doc.data()
                             });
@@ -345,19 +384,33 @@
 
                             const row = document.createElement('tr');
                             row.innerHTML = `
-                                <td>${timestamp}</td>
-                                <td class="text-sm truncate max-w-xs" title="${userId}">${userId.substring(0, 15)}...</td>
+                                <td class="text-sm font-mono">${timestamp.split('. ').slice(0, 3).join('. ').trim()}</td>
+                                <td>
+                                    <span class="text-xs truncate block max-w-[100px] font-mono" title="${userId}">
+                                        ${userId.substring(0, 15)}...
+                                    </span>
+                                </td>
                                 <td>${logData.ip_address || 'N/A'}</td>
                                 <td>${logData.location_country || 'N/A'}</td>
                                 <td>${logData.isp_info || 'N/A'}</td>
                                 <td>${logData.browser || 'N/A'}</td>
-                                <td class="text-xs truncate max-w-xs" title="${logData.user_agent}">${logData.user_agent ? logData.user_agent.substring(0, 30) + '...' : 'N/A'}</td>
+                                <td>
+                                    <span class="text-xs truncate block max-w-[150px] text-gray-400" title="${logData.user_agent}">
+                                        ${logData.user_agent ? logData.user_agent.substring(0, 30) + '...' : 'N/A'}
+                                    </span>
+                                </td>
                                 <td class="text-center">
                                     <button data-doc-id="${logData.docId}" 
                                             data-visitor-uid="${logData.visitorUid}"
                                             data-app-id="${logData.appIdFromDb}"  
-                                            class="delete-btn text-red-500 hover:text-red-700 font-medium">
-                                        삭제
+                                            class="delete-btn text-red-500 hover:text-red-400 font-medium transition duration-150 p-1 rounded-md hover:bg-red-900/50">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 inline-block">
+                                            <path d="M3 6h18"></path>
+                                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                                        </svg>
                                     </button>
                                 </td>
                             `;
@@ -369,12 +422,12 @@
                         console.error("로그 불러오기 오류:", error);
                         if (error.code === 'permission-denied') {
                             statusMessage.textContent = "⛔ 로그 불러오기 실패: Firebase 보안 규칙(Security Rules)을 확인해주세요.";
-                            statusMessage.classList.remove('text-indigo-600');
+                            statusMessage.classList.remove('text-indigo-400');
                             statusMessage.classList.add('text-red-500');
                             ruleErrorMessage.classList.remove('hidden');
                         } else {
                             statusMessage.textContent = "로그 불러오기 오류. 콘솔을 확인하십시오.";
-                            statusMessage.classList.remove('text-indigo-600');
+                            statusMessage.classList.remove('text-indigo-400');
                             statusMessage.classList.add('text-red-500');
                             ruleErrorMessage.classList.add('hidden');
                         }
@@ -383,42 +436,39 @@
 
             // 로그 삭제 이벤트 위임
             logsBody.addEventListener('click', (e) => {
-                if (e.target.classList.contains('delete-btn')) {
-                    const btn = e.target;
+                const btn = e.target.closest('.delete-btn');
+                if (btn) {
                     const docId = btn.dataset.docId;
                     const visitorUid = btn.dataset.visitorUid;
-                    const appIdFromDb = btn.dataset.appId; // **NEW:** 실제 App ID 가져오기
+                    const appIdFromDb = btn.dataset.appId; 
                     
                     if (confirm('정말로 이 로그를 삭제하시겠습니까?')) {
-                        // **NEW:** 실제 App ID를 함수에 전달
                         deleteLog(docId, visitorUid, appIdFromDb, btn);
                     }
                 }
             });
 
             // 로그 삭제 함수
-            // **NEW:** appIdFromDb 매개변수 추가
             async function deleteLog(docId, visitorUid, appIdFromDb, btnElement) {
                 if (!db) return;
 
-                // FireStore 경로: /artifacts/{appIdFromDb}/users/{visitorUid}/visitor_logs/{docId}
-                // **NEW:** 전역 'appId' 대신 DB에서 가져온 'appIdFromDb'를 사용합니다.
                 const logPath = `artifacts/${appIdFromDb}/users/${visitorUid}/visitor_logs/${docId}`;
                 
-                // 삭제 버튼 비활성화
+                // 삭제 버튼 비활성화 및 텍스트 변경
+                const originalContent = btnElement.innerHTML;
                 btnElement.disabled = true;
-                btnElement.textContent = '삭제 중...';
+                btnElement.innerHTML = '<span class="text-sm font-light">...삭제 중</span>';
 
                 try {
                     await deleteDoc(doc(db, logPath));
                     console.log("문서 성공적으로 삭제됨:", logPath);
-                    // onSnapshot 리스너가 즉시 UI를 업데이트하므로, 별도의 새로고침은 필요 없습니다.
                 } catch (error) {
                     console.error("로그 삭제 오류:", error);
                     statusMessage.textContent = `⛔ 로그 삭제 실패: ${error.message}`;
                     statusMessage.classList.add('text-red-500');
+                    // 오류 발생 시 버튼 복구
                     btnElement.disabled = false;
-                    btnElement.textContent = '삭제';
+                    btnElement.innerHTML = originalContent;
                 }
             }
 
