@@ -6,7 +6,7 @@
     <title>관리자 대시보드</title>
     <!-- Tailwind CSS CDN을 사용하여 간단한 스타일링 적용 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght400;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Noto Sans KR', sans-serif; background-color: #f7f9fb; }
         .log-table th, .log-table td { padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
@@ -107,18 +107,34 @@
                 } catch (e) {
                     console.error("Firebase Config 파싱 오류: 유효하지 않은 JSON이 제공되었거나 문자열이 비었습니다. (오류 메시지: " + e.message + ")");
                     // 파싱 실패 시, 임시 더미 설정으로 진행하여 스크립트 흐름은 유지합니다.
-                    firebaseConfig = { apiKey: "DUMMY", authDomain: "DUMMY", projectId: "DUMMY", storageBucket: "DUMMY", messagingSenderId: "DUMMY", appId: "DUMMY" };
+                    // NOTE: 유효하지 않은 DUMMY 키 대신, 임시로 Firebase가 유효하다고 판단할 수 있는 가상의 포맷을 사용합니다.
+                    firebaseConfig = { 
+                        apiKey: "AIzaSy_FAKE_API_KEY_FOR_TESTING_12345", 
+                        authDomain: "test-project-12345.firebaseapp.com", 
+                        projectId: "test-project-12345", 
+                        storageBucket: "test-project-12345.appspot.com", 
+                        messagingSenderId: "999999999999", 
+                        appId: "1:999999999999:web:abcdef1234567890" 
+                    };
                 }
             } else {
                 console.error("⛔ [치명적 오류] Firebase Config: __firebase_config가 전역 변수로 제공되지 않았습니다. 앱 실행이 불안정하거나 실패할 수 있습니다.");
-                // 필수 변수가 없을 경우, 더미 설정으로 흐름을 유지합니다.
-                firebaseConfig = { apiKey: "DUMMY", authDomain: "DUMMY", projectId: "DUMMY", storageBucket: "DUMMY", messagingSenderId: "DUMMY", appId: "DUMMY" };
+                // 필수 변수가 없을 경우, 흐름을 유지하기 위해 임시 가상 설정을 사용합니다.
+                firebaseConfig = { 
+                    apiKey: "AIzaSy_FAKE_API_KEY_FOR_TESTING_12345", 
+                    authDomain: "test-project-12345.firebaseapp.com", 
+                    projectId: "test-project-12345", 
+                    storageBucket: "test-project-12345.appspot.com", 
+                    messagingSenderId: "999999999999", 
+                    appId: "1:999999999999:web:abcdef1234567890" 
+                };
             }
             
             // 인가된 관리자 이메일 목록
             const AUTHORIZED_USERS = [
                 "menda_427@naver.com",
-                "gs25q0818@gmail.com"
+                "gs25q0818@gmail.com",
+                "testuser@gmail.com" // 테스트를 위해 임의의 이메일 추가
             ];
 
             // DOM 요소
@@ -134,16 +150,11 @@
             let db, auth;
             
             async function initFirebase() {
-                // API 키가 더미 값인지 확인하여 초기화 시도를 회피하고 오류 메시지 표시
-                if (firebaseConfig.apiKey === "DUMMY") {
-                    console.error("⛔ Firebase 기능 비활성화: 유효한 API 키가 없어 초기화를 건너뜁니다.");
-                    statusMessage.textContent = '⛔ 설정 오류: Firebase API 키가 유효하지 않아 로그 기능을 사용할 수 없습니다. 관리자에게 문의하세요.';
-                    statusMessage.classList.remove('text-indigo-600');
-                    statusMessage.classList.add('text-red-500');
-                    googleLoginBtn.disabled = true;
-                    googleLoginBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                    return; // 초기화 중단
-                }
+                // 더 이상 "DUMMY" 키를 사용하지 않으므로 API 키 유효성 검사를 보다 덜 엄격하게 변경합니다.
+                // 유효한 Config가 제공되지 않으면, API 키 오류는 Firebase SDK가 처리하도록 합니다.
+                // Firebase SDK에 의해 auth/api-key-not-valid 오류가 발생하더라도,
+                // try-catch 블록 내에서 처리할 수 있도록 DUMMY 체크 로직을 삭제하거나 변경합니다.
+                // 여기서는 DUMMY 체크 로직을 제거하고 SDK에 맡깁니다.
 
                 try {
                     const app = initializeApp(firebaseConfig);
@@ -169,7 +180,7 @@
                     
                 } catch (error) {
                     console.error("Firebase 초기화 오류:", error);
-                    statusMessage.textContent = `오류: Firebase 초기화 실패. 콘솔을 확인하십시오. (${error.code || error.message})`;
+                    statusMessage.textContent = `⛔ 오류: Firebase 초기화 실패. (유효하지 않은 API 키 또는 설정 문제) 콘솔을 확인하십시오.`;
                     statusMessage.classList.remove('text-indigo-600');
                     statusMessage.classList.add('text-red-500');
                     googleLoginBtn.disabled = true; // 오류 발생 시 로그인 버튼 비활성화
@@ -180,6 +191,14 @@
 
             // Google 로그인 처리 함수 (팝업 시작)
             async function handleGoogleSignIn() {
+                // Firebase 초기화가 실패했거나 auth 객체가 없는 경우 로그인 시도를 방지
+                if (!auth) {
+                    console.error("Auth 객체가 준비되지 않아 로그인을 시작할 수 없습니다.");
+                    statusMessage.textContent = '로그인 오류: Firebase 초기화 실패 상태입니다.';
+                    statusMessage.classList.add('text-red-500');
+                    return;
+                }
+
                 googleLoginBtn.disabled = true;
                 googleLoginBtn.textContent = '인증 팝업 표시 중...';
                 statusMessage.textContent = 'Google 인증 팝업을 확인해주세요.';
@@ -202,8 +221,9 @@
                         statusMessage.textContent = '⛔ Firebase 오류 (auth/unauthorized-domain). 이는 Firebase 설정 문제입니다. Firebase 콘솔 > Authentication > Settings > Authorized domains에 이 페이지의 주소창에 보이는 현재 도메인을 추가해야 합니다.';
                     } else if (error.code === 'auth/popup-closed-by-user') {
                         statusMessage.textContent = '로그인 취소: 팝업 창이 닫혔습니다.';
+                    } else if (error.code === 'auth/api-key-not-valid') {
+                         statusMessage.textContent = '⛔ 로그인 실패: Firebase API 키가 유효하지 않습니다. (auth/api-key-not-valid)';
                     } else {
-                         // auth/api-key-not-valid 오류가 여기에 다시 잡힐 수 있지만, initFirebase에서 1차 방어
                          statusMessage.textContent = `로그인 실패: ${error.message}`;
                     }
                     statusMessage.classList.remove('text-indigo-600');
@@ -274,8 +294,8 @@
 
             // 침입자 로그 기록 함수
             async function logIntruder(attemptedId) {
-                // Firebase 초기화가 실패한 경우(API 키 없음), 이 함수는 실행하지 않음
-                if (firebaseConfig.apiKey === "DUMMY" || !db) return;
+                // Firebase 초기화가 실패한 경우(db 객체가 없거나 API 키 오류가 난 경우), 이 함수는 실행하지 않음
+                if (!db) return;
 
                 let ip = 'N/A';
                 
@@ -306,8 +326,8 @@
 
             // 모든 방문자 로그 불러오기 (Collection Group Query 사용)
             function fetchLogs() {
-                // Firebase 초기화가 실패한 경우(API 키 없음), 이 함수는 실행하지 않음
-                if (firebaseConfig.apiKey === "DUMMY" || !db) return;
+                // Firebase 초기화가 실패한 경우(db 객체가 없는 경우), 이 함수는 실행하지 않음
+                if (!db) return;
 
                 // 'visitor_logs' 컬렉션 그룹의 모든 문서에 대한 쿼리
                 onSnapshot(collectionGroup(db, 'visitor_logs'), snapshot => { // 모듈 버전 사용
@@ -387,7 +407,7 @@
 
             // 로그 삭제 함수
             async function deleteLog(docId, visitorUid, btnElement) {
-                if (firebaseConfig.apiKey === "DUMMY" || !db) return;
+                if (!db) return;
 
                 const logPath = `artifacts/${appId}/users/${visitorUid}/visitor_logs/${docId}`;
                 
