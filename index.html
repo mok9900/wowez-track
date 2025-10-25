@@ -23,9 +23,11 @@
 
             <!-- 로그인/상태 영역 -->
             <div id="auth-status" class="mb-6 text-center">
-                <p id="status-message" class="text-lg text-indigo-600 mb-4">플랫폼 인증 확인 중...</p>
-                <button id="google-login-btn" class="bg-gray-300 text-gray-700 font-bold py-2 px-6 rounded-lg shadow-md transition duration-200" disabled>
-                    인증 중 (자동)
+                <p id="status-message" class="text-lg text-indigo-600 mb-4">관리자 계정으로 로그인이 필요합니다.</p>
+                
+                <!-- Google 로그인 버튼 -->
+                <button id="google-login-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition duration-200">
+                    Google 계정으로 로그인
                 </button>
                 <button id="logout-btn" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition duration-200 ml-4">
                     로그아웃
@@ -70,10 +72,10 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { 
             getAuth, 
-            signInAnonymously, 
-            signInWithCustomToken, 
             onAuthStateChanged,
-            signOut 
+            signOut,
+            GoogleAuthProvider,
+            signInWithPopup,
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, 
@@ -88,43 +90,25 @@
 
 
         document.addEventListener('DOMContentLoaded', () => {
-            // NOTE: Canvas 환경에서는 외부 로그인(Popup/Redirect)이 작동하지 않습니다.
-            // 대신, Canvas에서 제공하는 전역 변수(__app_id, __firebase_config, __initial_auth_token)를 사용하여 인증을 처리합니다.
-            
             // 전역 변수 로드 (Canvas 환경 필수 요소)
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             
-            // 기본 Firebase 설정 (오류 발생 시 사용될 폴백)
-            const DEFAULT_FIREBASE_CONFIG = {
-                apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY",
-                authDomain: "track-ez-9ecb7.firebaseapp.com",
-                projectId: "track-ez-9ecb7",
-                storageBucket: "track-ez-9ecb7.firebasestorage.app",
-                messagingSenderId: "893851585207",
-                appId: "1:893851585207:web:ba248d9bcab0d793361b32",
-                measurementId: "G-E69E7TLNZN"
-            };
-
-            let firebaseConfig = DEFAULT_FIREBASE_CONFIG; // 기본 설정으로 시작
+            let firebaseConfig; 
             
-            // Canvas에서 __firebase_config가 제공되면 파싱하여 사용
+            // Canvas 환경에서 __firebase_config가 제공되면 파싱하여 사용
             if (typeof __firebase_config !== 'undefined') {
                 try {
-                    const parsedConfig = JSON.parse(__firebase_config);
-                    // 파싱된 설정에 projectId가 있다면 사용하고, 없다면 기본 설정의 projectId를 사용하도록 병합
-                    firebaseConfig = {
-                        ...DEFAULT_FIREBASE_CONFIG,
-                        ...parsedConfig,
-                    };
+                    firebaseConfig = JSON.parse(__firebase_config);
+                    console.log("Firebase Config: Canvas 환경 설정 사용.");
                 } catch (e) {
-                    console.error("Firebase Config 파싱 오류: 유효하지 않은 JSON이 제공되었습니다. 기본 설정을 사용합니다.", e);
-                    // 파싱 오류가 나면 이미 설정된 DEFAULT_FIREBASE_CONFIG를 유지
+                    console.error("Firebase Config 파싱 오류: 유효하지 않은 JSON이 제공되었습니다.", e);
+                    return; // 설정 오류 발생 시 진행 불가
                 }
+            } else {
+                 console.error("Firebase Config: __firebase_config가 제공되지 않았습니다.");
+                 return; // 설정 없음 진행 불가
             }
             
-            // 토큰 로드
-            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
             // 인가된 관리자 이메일 목록
             const AUTHORIZED_USERS = [
                 "menda_427@naver.com",
@@ -145,25 +129,11 @@
             
             async function initFirebase() {
                 try {
-                    // 유효한 firebaseConfig 객체로 초기화
                     const app = initializeApp(firebaseConfig);
                     db = getFirestore(app);
                     auth = getAuth(app);
                     
-                    // Canvas 환경에 맞는 인증 처리 (Custom Token 또는 익명 로그인)
-                    if (initialAuthToken) {
-                        statusMessage.textContent = "플랫폼 인증 토큰으로 로그인 중...";
-                        await signInWithCustomToken(auth, initialAuthToken);
-                        console.log("Canvas Custom Token으로 로그인 성공.");
-                    } else {
-                        statusMessage.textContent = "익명으로 로그인 중...";
-                        // 익명 로그인은 Firestore 규칙상 Public/Private 데이터에 접근이 제한될 수 있습니다.
-                        await signInAnonymously(auth); 
-                        console.log("Canvas 환경에서 익명 로그인 성공.");
-                    }
-
-                    // 1. 인증 상태 변경 리스너 설정
-                    // auth 객체가 정의된 후에 리스너를 설정
+                    // 인증 상태 리스너 설정: 로그인 상태가 변경될 때마다 실행됨
                     onAuthStateChanged(auth, user => {
                         if (user) {
                             handleSignIn(user);
@@ -171,71 +141,110 @@
                             handleSignOut();
                         }
                     });
-
-                    // 2. 로그아웃 버튼 클릭 핸들러 (auth가 정의된 후 등록)
+                    
+                    // 팝업 방식 사용으로 인해 리디렉션 결과 확인 로직 제거
+                    
+                    // Google 로그인 버튼 클릭 핸들러 등록
+                    googleLoginBtn.addEventListener('click', handleGoogleSignIn);
+                    
+                    // 로그아웃 버튼 클릭 핸들러 등록
                     logoutBtn.addEventListener('click', () => {
                         signOut(auth).catch(e => console.error("로그아웃 오류:", e));
                     });
                     
                 } catch (error) {
-                    console.error("Firebase 초기화 또는 인증 오류:", error);
-                    statusMessage.textContent = `오류: 초기 인증 실패. (${error.code || error.message})`;
+                    console.error("Firebase 초기화 오류:", error);
+                    statusMessage.textContent = `오류: Firebase 초기화 실패. 콘솔을 확인하십시오. (${error.code || error.message})`;
                     statusMessage.classList.remove('text-indigo-600');
                     statusMessage.classList.add('text-red-500');
+                    googleLoginBtn.disabled = true; // 오류 발생 시 로그인 버튼 비활성화
                 }
             }
 
-            // =================================================================
-            // 1. 인증 및 접근 제어 로직
-            // =================================================================
 
-            // Google 로그인 버튼 역할 변경: 자동 인증을 사용하므로, 이 버튼은 상태 표시용입니다.
-            googleLoginBtn.disabled = true;
+            // Google 로그인 처리 함수 (팝업 시작)
+            async function handleGoogleSignIn() {
+                googleLoginBtn.disabled = true;
+                googleLoginBtn.textContent = '인증 팝업 표시 중...';
+                statusMessage.textContent = 'Google 인증 팝업을 확인해주세요.';
+                statusMessage.classList.remove('text-red-500');
+                statusMessage.classList.add('text-indigo-600');
 
-            // 로그인 성공 처리
+                try {
+                    const provider = new GoogleAuthProvider();
+                    // 팝업 방식으로 로그인 시작 (auth/unauthorized-domain 오류 회피 목적)
+                    await signInWithPopup(auth, provider); 
+                    
+                    // signInWithPopup이 성공하면 onAuthStateChanged가 즉시 호출되어 UI 업데이트 처리
+
+                } catch (error) {
+                    console.error("Google 팝업 로그인 오류:", error);
+                    
+                    // auth/unauthorized-domain 오류 발생 시 사용자에게 조치 안내
+                    if (error.code === 'auth/unauthorized-domain') {
+                        // Firebase 콘솔 설정이 필요하다는 메시지를 명확히 표시
+                        statusMessage.textContent = '⛔ Firebase 오류 (auth/unauthorized-domain). 이는 Firebase 설정 문제입니다. Firebase 콘솔 > Authentication > Settings > Authorized domains에 이 페이지의 주소창에 보이는 현재 도메인을 추가해야 합니다.';
+                    } else if (error.code === 'auth/popup-closed-by-user') {
+                        statusMessage.textContent = '로그인 취소: 팝업 창이 닫혔습니다.';
+                    } else {
+                         statusMessage.textContent = `로그인 실패: ${error.message}`;
+                    }
+                    statusMessage.classList.remove('text-indigo-600');
+                    statusMessage.classList.add('text-red-500');
+                    
+                    // 버튼 상태 초기화
+                    googleLoginBtn.disabled = false;
+                    googleLoginBtn.textContent = 'Google 계정으로 로그인';
+                }
+            }
+
+
+            // 로그인 성공 처리 (onAuthStateChanged에 의해 호출됨)
             async function handleSignIn(user) {
-                const userEmail = user.email;
+                const userEmail = user.email; 
+                const isAuthenticated = userEmail && AUTHORIZED_USERS.includes(userEmail);
 
-                if (userEmail && AUTHORIZED_USERS.includes(userEmail)) {
+                if (isAuthenticated) {
                     // 1. 인가된 사용자
                     statusMessage.textContent = `접근 허용됨. 관리자: ${userEmail}`;
                     statusMessage.classList.remove('text-red-500', 'text-indigo-600');
                     statusMessage.classList.add('text-green-600');
                     
-                    googleLoginBtn.classList.add('hidden');
+                    googleLoginBtn.classList.add('hidden'); 
                     logoutBtn.classList.remove('hidden');
                     logViewer.classList.remove('hidden');
                     
                     fetchLogs(); // 로그 불러오기 시작
                 } else {
-                    // 2. 인가되지 않은 사용자 (익명 사용자 포함)
+                    // 2. 인가되지 않은 사용자 (로그인 성공했으나 관리자 이메일이 아닌 경우)
                     const unauthorizedId = userEmail || user.uid;
+                    const displayId = userEmail ? userEmail : unauthorizedId.substring(0, 15) + '... (비관리자)';
 
-                    // 익명 로그인이 아닌 실제 계정으로 접속했으나 인가되지 않은 경우에만 침입자 로그 기록
-                    if (user.isAnonymous === false) {
-                        await logIntruder(unauthorizedId);
-                    }
+                    // 침입자 로그 기록 (관리자 목록에 없는 계정)
+                    await logIntruder(unauthorizedId);
 
-                    statusMessage.textContent = `접근 거부됨. 계정: ${unauthorizedId.substring(0, 15)}...`;
+                    statusMessage.textContent = `접근 거부됨. 관리자 계정(${AUTHORIZED_USERS.join(', ')})이 아닙니다. 현재 계정: ${displayId}`;
                     statusMessage.classList.remove('text-indigo-600', 'text-green-600');
                     statusMessage.classList.add('text-red-500');
                     
-                    googleLoginBtn.textContent = "로그인된 사용자 아님";
-                    googleLoginBtn.classList.remove('hidden');
-                    logoutBtn.classList.add('hidden');
+                    // 로그아웃 버튼만 표시
+                    googleLoginBtn.classList.add('hidden'); 
+                    logoutBtn.classList.remove('hidden'); 
                     logViewer.classList.add('hidden');
                 }
             }
             
-            // 로그아웃 처리
+            // 로그아웃 처리 (onAuthStateChanged에 의해 호출됨)
             function handleSignOut() {
-                statusMessage.textContent = "인증 대기 중 (새로고침이 필요할 수 있습니다)";
+                statusMessage.textContent = "관리자 계정으로 로그인이 필요합니다.";
                 statusMessage.classList.remove('text-green-600', 'text-red-500');
                 statusMessage.classList.add('text-indigo-600');
                 
-                googleLoginBtn.textContent = "인증 상태 확인";
-                googleLoginBtn.disabled = true;
+                // 버튼 상태 업데이트 (로그인 가능 상태로 복원)
+                googleLoginBtn.textContent = 'Google 계정으로 로그인';
+                googleLoginBtn.disabled = false;
                 googleLoginBtn.classList.remove('hidden');
+                
                 logoutBtn.classList.add('hidden');
                 logViewer.classList.add('hidden');
                 logsBody.innerHTML = '';
@@ -263,7 +272,7 @@
                     attempted_id: attemptedId,
                     ip_address: ip,
                     user_agent: navigator.userAgent,
-                    status: 'Access Denied'
+                    status: 'Access Denied (Unauthorized Email)'
                 };
                 
                 const intruderPath = `artifacts/${appId}/public/data/intruder_logs`;
@@ -345,9 +354,6 @@
                     const docId = btn.dataset.docId;
                     const visitorUid = btn.dataset.visitorUid;
                     
-                    // NOTE: confirm() 대신 커스텀 모달 UI 사용 권장
-                    // 이 부분에서는 브라우저의 confirm() 대신 커스텀 모달 UI를 사용해야 합니다. 
-                    // 현재는 편의상 confirm()을 사용합니다.
                     if (confirm('정말로 이 로그를 삭제하시겠습니까?')) {
                         deleteLog(docId, visitorUid, btn);
                     }
@@ -363,14 +369,10 @@
                 btnElement.textContent = '삭제 중...';
 
                 try {
-                    // doc과 deleteDoc을 사용하여 문서 삭제 (모듈 버전 사용)
                     await deleteDoc(doc(db, logPath));
                     console.log("문서 성공적으로 삭제됨:", logPath);
-                    // onSnapshot에 의해 자동으로 UI에서 제거됨
                 } catch (error) {
                     console.error("로그 삭제 오류:", error);
-                    // NOTE: alert() 대신 커스텀 모달 UI 사용 권장
-                    // 이 부분에서도 alert() 대신 커스텀 모달 UI를 사용해야 합니다.
                     alert(`로그 삭제에 실패했습니다. (오류: ${error.message})`);
                     btnElement.disabled = false;
                     btnElement.textContent = '삭제';
@@ -383,3 +385,4 @@
     </script>
 </body>
 </html>
+
