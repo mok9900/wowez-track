@@ -1,1 +1,333 @@
-ddddd
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관리자 대시보드</title>
+    <!-- Tailwind CSS CDN을 사용하여 간단한 스타일링 적용 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f7f9fb; }
+        .log-table th, .log-table td { padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+        .log-table th { background-color: #eef2ff; color: #4338ca; font-weight: 700; }
+        .log-table tr:hover { background-color: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen flex flex-col items-center justify-center p-4">
+        
+        <!-- 중앙 컨테이너 -->
+        <div class="w-full max-w-4xl bg-white shadow-xl rounded-lg p-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">방문자 로그 관리 시스템</h1>
+
+            <!-- 로그인/상태 영역 -->
+            <div id="auth-status" class="mb-6 text-center">
+                <p id="status-message" class="text-lg text-indigo-600 mb-4">로그인 대기 중...</p>
+                <button id="google-login-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition duration-200">
+                    Google로 로그인
+                </button>
+                <button id="logout-btn" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition duration-200 ml-4">
+                    로그아웃
+                </button>
+            </div>
+
+            <!-- 로그 데이터 영역 (로그인 후 표시) -->
+            <div id="log-viewer" class="hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-semibold text-gray-700">방문자 기록</h2>
+                    <p id="log-count" class="text-sm text-gray-500">총 0개 기록</p>
+                </div>
+
+                <div class="overflow-x-auto rounded-lg border border-gray-200">
+                    <table class="min-w-full divide-y divide-gray-200 log-table">
+                        <thead>
+                            <tr>
+                                <th>시간</th>
+                                <th>사용자 ID</th>
+                                <th>IP 주소</th>
+                                <th>국가</th>
+                                <th>ISP</th>
+                                <th>브라우저</th>
+                                <th>기기 정보</th>
+                                <th class="text-center">삭제</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-body" class="bg-white divide-y divide-gray-200">
+                            <!-- Logs will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="no-logs-message" class="text-center text-gray-500 mt-4 hidden">
+                    기록된 방문자 로그가 없습니다.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK 로드 -->
+    <script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore-compat.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 사용자 제공 Firebase 설정
+            const firebaseConfig = {
+                apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY",
+                authDomain: "track-ez-9ecb7.firebaseapp.com",
+                projectId: "track-ez-9ecb7",
+                storageBucket: "track-ez-9ecb7.firebasestorage.app",
+                messagingSenderId: "893851585207",
+                appId: "1:893851585207:web:ba248d9bcab0d793361b32",
+                measurementId: "G-E69E7TLNZN"
+            };
+            
+            // 인가된 관리자 이메일 목록
+            const AUTHORIZED_USERS = [
+                "menda_427@naver.com",
+                "gs25q0818@gmail.com"
+            ];
+
+            // DOM 요소
+            const statusMessage = document.getElementById('status-message');
+            const googleLoginBtn = document.getElementById('google-login-btn');
+            const logoutBtn = document.getElementById('logout-btn');
+            const logViewer = document.getElementById('log-viewer');
+            const logsBody = document.getElementById('logs-body');
+            const logCount = document.getElementById('log-count');
+            const noLogsMessage = document.getElementById('no-logs-message');
+
+            // Firebase 초기화
+            let db, auth, provider;
+            let appId = 'track-ez-9ecb7';
+            
+            try {
+                const app = firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                auth = firebase.auth();
+                provider = new firebase.auth.GoogleAuthProvider();
+                // db.settings({ logLevel: 'debug' }); // 디버깅용 로그 레벨 설정
+            } catch (error) {
+                console.error("Firebase 초기화 오류:", error);
+                statusMessage.textContent = "오류: Firebase 초기화 실패. (콘솔 확인)";
+                statusMessage.classList.add('text-red-500');
+                googleLoginBtn.disabled = true;
+                return;
+            }
+
+            // Google Redirect 로그인 결과 처리 (페이지 로드 시 실행)
+            auth.getRedirectResult()
+                .then((result) => {
+                    if (result.user) {
+                        // 로그인 성공 (onAuthStateChanged에서 처리됨)
+                        console.log("Redirect 로그인 성공:", result.user.email);
+                    }
+                })
+                .catch((error) => {
+                    // 리디렉션 처리 중 오류 발생
+                    console.error("Redirect 로그인 결과 오류:", error);
+                    statusMessage.textContent = `로그인 오류: ${error.message}`;
+                    statusMessage.classList.remove('text-indigo-600');
+                    statusMessage.classList.add('text-red-500');
+                });
+
+            // =================================================================
+            // 1. 인증 및 접근 제어 로직
+            // =================================================================
+
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    handleSignIn(user);
+                } else {
+                    handleSignOut();
+                }
+            });
+
+            // 로그인 버튼 클릭 핸들러
+            googleLoginBtn.addEventListener('click', async () => {
+                try {
+                    statusMessage.textContent = "Google 로그인으로 리디렉션 중...";
+                    // 환경 제약으로 인해 signInWithPopup 대신 signInWithRedirect 사용
+                    await auth.signInWithRedirect(provider); // <-- signInWithRedirect로 변경
+                } catch (error) {
+                    console.error("Google 로그인 실패:", error);
+                    statusMessage.textContent = "로그인 실패: 환경에서 팝업이 지원되지 않습니다.";
+                    statusMessage.classList.remove('text-indigo-600');
+                    statusMessage.classList.add('text-red-500');
+                }
+            });
+            
+            // 로그아웃 버튼 클릭 핸들러
+            logoutBtn.addEventListener('click', () => {
+                auth.signOut();
+            });
+
+            // 로그인 성공 처리
+            async function handleSignIn(user) {
+                const userEmail = user.email;
+                
+                if (AUTHORIZED_USERS.includes(userEmail)) {
+                    // 1. 인가된 사용자
+                    statusMessage.textContent = `접근 허용됨. 관리자: ${userEmail}`;
+                    statusMessage.classList.remove('text-red-500');
+                    statusMessage.classList.add('text-green-600');
+                    
+                    googleLoginBtn.classList.add('hidden');
+                    logoutBtn.classList.remove('hidden');
+                    logViewer.classList.remove('hidden');
+                    
+                    fetchLogs(); // 로그 불러오기 시작
+                } else {
+                    // 2. 인가되지 않은 사용자 (침입자)
+                    const unauthorizedEmail = user.email || user.uid;
+                    await logIntruder(unauthorizedEmail);
+
+                    statusMessage.textContent = `접근 거부됨. 계정: ${unauthorizedEmail}`;
+                    statusMessage.classList.remove('text-indigo-600');
+                    statusMessage.classList.add('text-red-500');
+                    
+                    googleLoginBtn.classList.remove('hidden');
+                    logoutBtn.classList.add('hidden');
+                    logViewer.classList.add('hidden');
+                    
+                    // 접근 거부 후 강제 로그아웃
+                    auth.signOut();
+                }
+            }
+            
+            // 로그아웃 처리
+            function handleSignOut() {
+                statusMessage.textContent = "로그인 대기 중...";
+                statusMessage.classList.remove('text-green-600', 'text-red-500');
+                statusMessage.classList.add('text-indigo-600');
+                
+                googleLoginBtn.classList.remove('hidden');
+                logoutBtn.classList.add('hidden');
+                logViewer.classList.add('hidden');
+                logsBody.innerHTML = '';
+            }
+
+            // =================================================================
+            // 2. 로그 관리 (조회 및 삭제) 로직
+            // =================================================================
+
+            // 침입자 로그 기록 함수
+            async function logIntruder(attemptedId) {
+                let ip = 'N/A';
+                
+                // IP 정보 가져오기 (비동기 처리)
+                try {
+                    const ipResponse = await fetch('https://api.ipify.org?format=json');
+                    const ipData = await ipResponse.json();
+                    ip = ipData.ip;
+                } catch (e) {
+                    console.warn("IP 조회 실패:", e);
+                }
+
+                const intruderLog = {
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    attempted_id: attemptedId,
+                    ip_address: ip,
+                    user_agent: navigator.userAgent,
+                    status: 'Access Denied'
+                };
+                
+                const intruderPath = `artifacts/${appId}/public/data/intruder_logs`;
+                
+                db.collection(intruderPath).add(intruderLog)
+                    .then(() => console.log("침입자 로그 기록 완료:", attemptedId))
+                    .catch(e => console.error("침입자 로그 기록 오류:", e));
+            }
+
+            // 모든 방문자 로그 불러오기 (Collection Group Query 사용)
+            function fetchLogs() {
+                // 'visitor_logs' 컬렉션 그룹의 모든 문서에 대한 쿼리
+                db.collectionGroup('visitor_logs')
+                    .onSnapshot(snapshot => {
+                        logsBody.innerHTML = ''; // 기존 목록 초기화
+                        let count = 0;
+                        
+                        if (snapshot.empty) {
+                            noLogsMessage.classList.remove('hidden');
+                            logCount.textContent = '총 0개 기록';
+                            return;
+                        }
+
+                        noLogsMessage.classList.add('hidden');
+                        
+                        snapshot.forEach(doc => {
+                            count++;
+                            const log = doc.data();
+                            const docId = doc.id;
+                            // 경로에서 원본 컬렉션 ID 추출 (삭제 시 필요)
+                            const pathSegments = doc.ref.path.split('/'); 
+                            // 예: artifacts/track-ez-9ecb7/users/uid_abc/visitor_logs/log_doc_id
+                            // 3번째 세그먼트가 {userId}가 됨 (index 3)
+                            const visitorUid = pathSegments[3]; 
+
+                            const timestamp = log.timestamp ? new Date(log.timestamp.toDate()).toLocaleString('ko-KR') : 'N/A';
+
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${timestamp}</td>
+                                <td class="text-sm truncate max-w-xs" title="${log.user_id}">${log.user_id.substring(0, 8)}...</td>
+                                <td>${log.ip_address || 'N/A'}</td>
+                                <td>${log.location_country || 'N/A'}</td>
+                                <td>${log.isp_info || 'N/A'}</td>
+                                <td>${log.browser || 'N/A'}</td>
+                                <td class="text-xs truncate max-w-xs" title="${log.user_agent}">${log.user_agent.substring(0, 30)}...</td>
+                                <td class="text-center">
+                                    <button data-doc-id="${docId}" data-visitor-uid="${visitorUid}" 
+                                            class="delete-btn text-red-500 hover:text-red-700 font-medium">
+                                        삭제
+                                    </button>
+                                </td>
+                            `;
+                            logsBody.appendChild(row);
+                        });
+                        
+                        logCount.textContent = `총 ${count}개 기록`;
+                    }, error => {
+                        console.error("로그 불러오기 오류 (인덱스 필요 가능):", error);
+                        statusMessage.textContent = "로그 불러오기 오류. Firestore 인덱스를 확인하십시오.";
+                        statusMessage.classList.add('text-red-500');
+                    });
+            }
+
+            // 로그 삭제 이벤트 위임
+            logsBody.addEventListener('click', (e) => {
+                if (e.target.classList.contains('delete-btn')) {
+                    const btn = e.target;
+                    const docId = btn.dataset.docId;
+                    const visitorUid = btn.dataset.visitorUid;
+                    
+                    if (confirm('정말로 이 로그를 삭제하시겠습니까?')) {
+                        deleteLog(docId, visitorUid, btn);
+                    }
+                }
+            });
+
+            // 로그 삭제 함수
+            async function deleteLog(docId, visitorUid, btnElement) {
+                const logPath = `artifacts/${appId}/users/${visitorUid}/visitor_logs/${docId}`;
+                
+                // 삭제 버튼 비활성화
+                btnElement.disabled = true;
+                btnElement.textContent = '삭제 중...';
+
+                try {
+                    await db.doc(logPath).delete();
+                    console.log("문서 성공적으로 삭제됨:", logPath);
+                    // onSnapshot에 의해 자동으로 UI에서 제거됨
+                } catch (error) {
+                    console.error("로그 삭제 오류:", error);
+                    alert(`로그 삭제에 실패했습니다. (오류: ${error.message})`);
+                    btnElement.disabled = false;
+                    btnElement.textContent = '삭제';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
