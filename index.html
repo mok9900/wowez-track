@@ -136,14 +136,12 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             // 전역 변수 로드 (Canvas 환경 필수 요소)
-            // NOTE: 이 변수는 현재 환경의 앱 ID를 가리키며, 데이터를 저장한 실제 앱 ID와 다를 수 있습니다.
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             
             // =================================================================
             // 1. Firebase 구성 정보 (하드코딩)
             // =================================================================
             const firebaseConfig = {
-                // 사용자님께서 제공하신 API Key를 사용합니다.
                 apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY", 
                 authDomain: "track-ez-9ecb7.firebaseapp.com",
                 projectId: "track-ez-9ecb7",
@@ -157,7 +155,7 @@
             const AUTHORIZED_USERS = [
                 "menda_427@naver.com",
                 "gs25q0818@gmail.com",
-                "testuser@gmail.com" // 테스트 이메일 유지
+                "testuser@gmail.com"
             ];
 
             // DOM 요소
@@ -379,12 +377,27 @@
 
                         sortedLogs.forEach(logData => {
                             count++;
-                            const timestamp = logData.timestamp ? new Date(logData.timestamp.toDate()).toLocaleString('ko-KR') : 'N/A';
+                            
+                            // ==========================================================
+                            // ⭐ 시간, 분, 초가 포함되도록 포맷 수정
+                            // ==========================================================
+                            const date = logData.timestamp ? logData.timestamp.toDate() : null;
+                            const timestampDisplay = date ? date.toLocaleString('ko-KR', { 
+                                year: 'numeric', 
+                                month: '2-digit', 
+                                day: '2-digit', 
+                                hour: '2-digit', 
+                                minute: '2-digit', 
+                                second: '2-digit', 
+                                hour12: false // 24시간 형식 사용
+                            }) : 'N/A';
+                            // ==========================================================
+                            
                             const userId = logData.user_id || 'N/A'; 
 
                             const row = document.createElement('tr');
                             row.innerHTML = `
-                                <td class="text-sm font-mono">${timestamp.split('. ').slice(0, 3).join('. ').trim()}</td>
+                                <td class="text-xs font-mono">${timestampDisplay}</td>
                                 <td>
                                     <span class="text-xs truncate block max-w-[100px] font-mono" title="${userId}">
                                         ${userId.substring(0, 15)}...
@@ -442,6 +455,7 @@
                     const visitorUid = btn.dataset.visitorUid;
                     const appIdFromDb = btn.dataset.appId; 
                     
+                    // NOTE: confirm() 대신 커스텀 모달 UI를 사용해야 하지만, 현재는 편의상 confirm 사용
                     if (confirm('정말로 이 로그를 삭제하시겠습니까?')) {
                         deleteLog(docId, visitorUid, appIdFromDb, btn);
                     }
