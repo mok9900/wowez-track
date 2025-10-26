@@ -55,7 +55,7 @@
         // 커스텀 모달
         const confirmationModal = document.getElementById('confirmation-modal');
         const modalMessage = document.getElementById('modal-message');
-        let currentDeleteParams = null; // {docId, logAppId, logUserUid}
+        let currentDeleteParams = null; // {docId, logUserUid}
 
 
         // Firebase 초기화 및 인증 리스너 설정
@@ -79,7 +79,6 @@
                         if (isManager) {
                             fetchLogs();
                         } else {
-                            // 비인가된 사용자는 접근 거부
                             console.warn(`[접근 거부] 비인가된 관리자 접근 시도: ${userEmail}`);
                         }
                     } else {
@@ -134,7 +133,7 @@
         // 로그를 테이블에 렌더링하는 함수
         const renderLogs = (logs) => {
             logTableBody.innerHTML = ''; 
-            totalLogsSpan.textContent = logs.length;
+            totalLogsSpan.textContent = logs.length.toString();
             
             if (logs.length === 0) {
                  logTableBody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-gray-500">조회된 기록이 없습니다.</td></tr>`;
@@ -148,6 +147,7 @@
                     hour12: use12HourFormat 
                 };
                 
+                // Firestore Timestamp 객체를 Date 객체로 변환
                 const timeStr = log.timestamp.toDate().toLocaleString('ko-KR', dateOptions);
 
                 const row = document.createElement('tr');
@@ -180,58 +180,60 @@
 
         // 실시간 로그 데이터 가져오기 (onSnapshot)
         const fetchLogs = () => {
-            if (!db || !auth.currentUser) return;
+            if (!db || !auth.currentUser) {
+                totalLogsSpan.textContent = 'N/A'; // 인증이 안되면 N/A
+                return;
+            }
             
-            // 모든 컬렉션에서 'visitor_logs' 컬렉션을 조회하는 Collection Group 쿼리
             const logsCollectionGroup = collectionGroup(db, "visitor_logs");
             
-            // timestamp 내림차순 정렬 및 상위 100개 제한
             const q = query(
                 logsCollectionGroup, 
                 orderBy('timestamp', 'desc'), 
                 limit(100) 
             ); 
 
-            // onSnapshot 리스너를 통해 실시간 업데이트 처리
             onSnapshot(q, (snapshot) => {
                 const logs = [];
                 snapshot.forEach((doc) => {
                     const data = doc.data();
                     
-                    // 문서 경로에서 실제 userUid와 appId 추출
-                    // 경로 형식: artifacts/{appId}/users/{userUid}/visitor_logs/{docId}
                     const pathParts = doc.ref.path.split('/');
                     const appIdFromDb = pathParts[1];
                     const userUidFromDb = pathParts[3];
                     
                     logs.push({ 
                         id: doc.id, 
-                        appId: appIdFromDb, // 로그 삭제를 위해 필요
-                        userUid: userUidFromDb, // 로그 삭제를 위해 필요
+                        appId: appIdFromDb, 
+                        userUid: userUidFromDb, 
                         ...data 
                     });
                 });
                 
-                renderLogs(logs); // UI 렌더링
+                renderLogs(logs); 
             }, (error) => {
-                console.error("로그 불러오기 오류:", error);
+                console.error("로그 불러오기 오류 (권한 문제 가능성):", error);
                 
-                let errorMessage = `<p class="text-red-500 font-bold mt-4">로그 불러오기 오류 발생. <span class="text-yellow-400">개발자 콘솔(F12)을 확인</span>하여 에러 메시지를 확인해주세요.</p>`;
+                // Firestore 보안 규칙 오류 (Permission Denied)가 발생했을 가능성이 높습니다.
+                totalLogsSpan.textContent = 'N/A';
                 
-                // Firestore 색인 오류 메시지가 콘솔에 출력될 경우 사용자에게 안내
-                if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
-                    errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ Firestore 색인 오류: <span class="text-yellow-400">개발자 콘솔(F12)에 표시되는 색인 생성 링크</span>를 클릭하여 색인을 생성해 주세요.</p>`;
+                let errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ 로그 불러오기 실패: ${error.message}.</p>`;
+                
+                if (error.code === 'permission-denied') {
+                     errorMessage = `<p class="text-red-500 font-bold mt-4">🛑 Firestore 권한 오류: 관리자가 <span class="text-yellow-400">Firebase 규칙</span>을 수정하여 모든 사용자의 로그를 <span class="text-yellow-400">읽을 수 있도록</span> 허용해야 합니다. 콘솔을 확인하세요.</p>`;
+                } else if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
+                    errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ Firestore 색인 오류: <span class="text-yellow-400">개발자 콘솔(F12)에 표시되는 색인 생성 링크</span>를 클릭하여 색인을 생성해 주세요. (이미 완료된 상태일 수 있습니다.)</p>`;
                 }
+                
                 statusDiv.innerHTML = errorMessage;
             });
         };
         
-        // 로그 삭제 (사용자 UID와 App ID를 포함한 정확한 경로 지정)
+        // 로그 삭제 
         const deleteLog = async (docId, logUserUid) => {
             if (!db || !auth.currentUser) return;
             
-            // 현재 로그인된 사용자가 아닌, 로그가 저장된 경로의 appId를 사용해야 함.
-            // 사용자님의 경우 projectId가 appId 역할을 하고 있습니다.
+            // 삭제를 위한 AppId는 Firebase 프로젝트 ID로 고정합니다.
             const logAppId = FIREBASE_CONFIG.projectId; 
             
             // 정확한 문서 경로: artifacts/{appId}/users/{userUid}/visitor_logs/{docId}
@@ -270,7 +272,6 @@
 
         const handleConfirmDelete = () => {
             if (currentDeleteParams) {
-                // logAppId는 FIREBASE_CONFIG.projectId로 고정합니다.
                 deleteLog(currentDeleteParams.docId, currentDeleteParams.logUserUid);
             }
             hideModal();
@@ -282,7 +283,6 @@
             const params = {
                 docId: btn.getAttribute('data-doc-id'),
                 logUserUid: btn.getAttribute('data-user-uid')
-                // appId는 deleteLog 함수 내에서 고정 값으로 사용합니다.
             };
 
             showModal("정말로 이 로그 기록을 삭제하시겠습니까?", params);
