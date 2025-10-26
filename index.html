@@ -140,6 +140,12 @@
                  return;
             }
 
+            const truncateText = (text, maxLength = 20) => {
+                // null 또는 undefined 체크를 추가하여 오류 방지
+                const safeText = text || ""; 
+                return safeText.length > maxLength ? safeText.substring(0, maxLength) + '...' : safeText;
+            };
+
             logs.forEach(log => {
                 const dateOptions = { 
                     year: 'numeric', month: 'numeric', day: 'numeric', 
@@ -153,14 +159,18 @@
                 const row = document.createElement('tr');
                 row.className = 'border-b border-gray-700 hover:bg-gray-700 transition duration-150';
                 
-                const truncateText = (text, maxLength = 20) => text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+                const displayUserId = log.userId || log.userUid || 'N/A'; // userId가 없으면 userUid 사용
+                const displayCountry = log.country || 'N/A';
+                const displayISP = log.isp || 'N/A';
+                const displayIP = log.ipAddress || 'N/A';
+
 
                 row.innerHTML = `
                     <td class="p-4 whitespace-nowrap text-sm text-gray-300 font-mono">${timeStr}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-indigo-400 truncate max-w-xs" title="${log.userId}">${truncateText(log.userId, 15)}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${log.ipAddress}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${log.country || 'N/A'}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${log.isp || 'N/A'}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-indigo-400 truncate max-w-xs" title="${displayUserId}">${truncateText(displayUserId, 15)}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayIP}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayCountry}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayISP}</td>
                     <td class="p-4 whitespace-nowrap text-sm text-gray-400 truncate max-w-xs" title="${log.userAgent}">${truncateText(log.userAgent, 30)}</td>
                     <td class="p-4 whitespace-nowrap text-right">
                         <button 
@@ -212,9 +222,8 @@
                 
                 renderLogs(logs); 
             }, (error) => {
-                console.error("로그 불러오기 오류 (권한 문제 가능성):", error);
+                console.error("로그 불러오기 오류:", error);
                 
-                // Firestore 보안 규칙 오류 (Permission Denied)가 발생했을 가능성이 높습니다.
                 totalLogsSpan.textContent = 'N/A';
                 
                 let errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ 로그 불러오기 실패: ${error.message}.</p>`;
@@ -223,6 +232,8 @@
                      errorMessage = `<p class="text-red-500 font-bold mt-4">🛑 Firestore 권한 오류: 관리자가 <span class="text-yellow-400">Firebase 규칙</span>을 수정하여 모든 사용자의 로그를 <span class="text-yellow-400">읽을 수 있도록</span> 허용해야 합니다. 콘솔을 확인하세요.</p>`;
                 } else if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
                     errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ Firestore 색인 오류: <span class="text-yellow-400">개발자 콘솔(F12)에 표시되는 색인 생성 링크</span>를 클릭하여 색인을 생성해 주세요. (이미 완료된 상태일 수 있습니다.)</p>`;
+                } else if (error instanceof TypeError) {
+                    errorMessage = `<p class="text-red-500 font-bold mt-4">🚨 데이터 처리 오류: 로그 데이터 구조가 잘못되었습니다. 콘솔에서 로그의 필드를 확인하세요.</p>`;
                 }
                 
                 statusDiv.innerHTML = errorMessage;
