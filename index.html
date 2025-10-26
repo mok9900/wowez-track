@@ -10,32 +10,13 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, deleteDoc, onSnapshot, collection, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, deleteDoc, onSnapshot, collectionGroup, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-lite.js";
 
         // Firestore 로그 레벨 설정 (디버깅용)
         setLogLevel('Debug');
 
-        // Firebase 구성 객체 (사용자 제공 정보)
-        // 이 구성은 실제 서비스와 연결됩니다.
-        const firebaseConfig = {
-            apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY",
-            authDomain: "track-ez-9ecb7.firebaseapp.com",
-            projectId: "track-ez-9ecb7",
-            storageBucket: "track-ez-9ecb7.firebasestorage.app",
-            messagingSenderId: "893851585207",
-            appId: "1:893851585207:web:ba248d9bcab0d793361b32",
-            measurementId: "G-E69E7TLNZN"
-        };
-
-        // 관리자 권한을 가질 이메일 목록
-        // 여기에 로그인한 Google 계정 이메일이 포함되어야만 관리자 대시보드에 접근 가능합니다.
-        const AUTHORIZED_USERS = [
-            "menda_427@naver.com",
-            "gs25q0818@gmail.com",
-            "gs25q0327@gmail.com"
-        ];
-
+        // 전역 변수 초기화
         let app;
         let auth;
         let db;
@@ -44,7 +25,23 @@
         let use12HourFormat = true; // 시간 표시 형식 (기본값: 12시간/AM/PM)
         let currentLogs = []; // 현재 표시 중인 로그 데이터 배열
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // Firebase 구성 객체 (사용자 제공 정보로 대체)
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY",
+            authDomain: "track-ez-9ecb7.firebaseapp.com",
+            projectId: "track-ez-9ecb7",
+            storageBucket: "track-ez-9ecb7.firebasestorage.app",
+            messagingSenderId: "893851585207",
+            appId: "1:893851585207:web:ba248d9bcab0d793361b32",
+            measurementId: "G-E69E7TLNZN"
+        };
+        
+        // 관리자 권한을 가질 이메일 목록
+        const AUTHORIZED_USERS = [
+            "menda_427@naver.com",
+            "gs25q0818@gmail.com",
+            "gs25q0327@gmail.com"
+        ];
 
         // UI 요소
         const statusDiv = document.getElementById('auth-status');
@@ -54,9 +51,8 @@
         const logTableBody = document.getElementById('log-table-body');
         const totalLogsSpan = document.getElementById('total-logs');
         const timeToggleContainer = document.getElementById('time-format-toggle-container');
-        const timeToggleInput = document.getElementById('time-format-toggle');
         
-        // -- 커스텀 모달 관련 변수 --
+        // 커스텀 모달
         const confirmationModal = document.getElementById('confirmation-modal');
         const modalMessage = document.getElementById('modal-message');
         let currentDeleteParams = null; // {docId, logAppId, logUserUid}
@@ -65,7 +61,8 @@
         // Firebase 초기화 및 인증 리스너 설정
         const initFirebase = () => {
             try {
-                app = initializeApp(firebaseConfig);
+                // Firebase 초기화 (사용자 정의 설정 사용)
+                app = initializeApp(FIREBASE_CONFIG);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
@@ -77,14 +74,13 @@
                         
                         isManager = AUTHORIZED_USERS.includes(userEmail);
                         
-                        // 관리자 UI 업데이트
                         updateUI(userEmail, isManager);
 
                         if (isManager) {
                             fetchLogs();
                         } else {
-                            // 비인가된 사용자는 접근 거부 로그 기록
-                            logIntruder(userEmail);
+                            // 비인가된 사용자는 접근 거부
+                            console.warn(`[접근 거부] 비인가된 관리자 접근 시도: ${userEmail}`);
                         }
                     } else {
                         // 로그아웃 상태
@@ -98,7 +94,6 @@
                 console.error("Firebase 초기화 오류:", error);
                 statusDiv.innerHTML = `<p class="text-red-500 font-bold">⛔ Firebase 초기화 오류: ${error.message}</p>`;
                 loginButton.disabled = true;
-                loginButton.textContent = "초기화 실패";
             }
         };
 
@@ -109,21 +104,11 @@
                 await signInWithPopup(auth, provider);
             } catch (error) {
                 console.error("Google 팝업 로그인 오류:", error);
-                // auth/unauthorized-domain 오류 시 사용자에게 조치 안내
                 let errorMessage = `로그인 실패: ${error.message}`;
-                if (error.code === 'auth/unauthorized-domain') {
-                    errorMessage += `. 도메인 인증 오류입니다. Firebase 콘솔의 Authentication > Settings > Authorized domains에 현재 페이지 도메인(${window.location.host})을 추가하세요.`;
-                }
                 statusDiv.innerHTML = `<p class="text-red-400 font-bold mt-4 p-3 bg-gray-700 rounded-lg">${errorMessage}</p>`;
             }
         };
         
-        // 비인가 사용자 침입 로그 기록 (기능 구현을 위해 임시로 비활성화)
-        const logIntruder = (email) => {
-            console.log(`[침입 감지] ${email} - 비인가된 관리자 접근 시도`);
-            // Firestore 규칙에 의해 관리자만 기록 가능하도록 설정되어 있다면 이 함수는 실행되지 않습니다.
-        };
-
         // UI 상태 업데이트
         const updateUI = (email, isManager) => {
             loginButton.classList.add('hidden');
@@ -133,17 +118,14 @@
             statusDiv.classList.remove('hidden');
 
             if (isManager) {
-                // 관리자 로그인 성공
                 statusDiv.innerHTML = `<p class="text-indigo-400 font-semibold">✅ 로그인 성공. 관리자(${email})</p>`;
                 adminDashboard.classList.remove('hidden');
                 logoutButton.classList.remove('hidden');
                 timeToggleContainer.classList.remove('hidden');
             } else if (email) {
-                // 일반 사용자 (비인가 관리자) 로그인
-                statusDiv.innerHTML = `<p class="text-red-500 font-bold">⛔ 접근 거부됨. 계정: ${email}. 이 계정은 관리자가 아닙니다.</p>`;
+                statusDiv.innerHTML = `<p class="text-red-500 font-bold">⛔ 접근 거부됨. 계정: ${email}. 관리자 권한이 없습니다.</p>`;
                 logoutButton.classList.remove('hidden');
             } else {
-                // 로그아웃 상태 또는 초기 상태
                 statusDiv.innerHTML = `<p class="text-gray-400">로그인되지 않은 사용자입니다.</p>`;
                 loginButton.classList.remove('hidden');
             }
@@ -151,11 +133,15 @@
 
         // 로그를 테이블에 렌더링하는 함수
         const renderLogs = (logs) => {
-            logTableBody.innerHTML = ''; // 테이블 초기화
+            logTableBody.innerHTML = ''; 
             totalLogsSpan.textContent = logs.length;
             
+            if (logs.length === 0) {
+                 logTableBody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-gray-500">조회된 기록이 없습니다.</td></tr>`;
+                 return;
+            }
+
             logs.forEach(log => {
-                // 시간 형식 포맷터 설정
                 const dateOptions = { 
                     year: 'numeric', month: 'numeric', day: 'numeric', 
                     hour: '2-digit', minute: '2-digit', second: '2-digit', 
@@ -167,7 +153,6 @@
                 const row = document.createElement('tr');
                 row.className = 'border-b border-gray-700 hover:bg-gray-700 transition duration-150';
                 
-                // 긴 문자열은 truncate하고 툴팁(title) 제공
                 const truncateText = (text, maxLength = 20) => text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
 
                 row.innerHTML = `
@@ -181,7 +166,6 @@
                         <button 
                             class="delete-log-btn text-red-400 hover:text-red-500 font-medium transition duration-150 p-2 rounded-lg bg-gray-700 hover:bg-red-900/50"
                             data-doc-id="${log.id}"
-                            data-app-id="${log.appId}"
                             data-user-uid="${log.userUid}"
                             onclick="handleDeleteClick(event)"
                         >
@@ -191,21 +175,20 @@
                 `;
                 logTableBody.appendChild(row);
             });
-            currentLogs = logs; // 현재 로그 데이터 업데이트
+            currentLogs = logs; 
         };
 
         // 실시간 로그 데이터 가져오기 (onSnapshot)
         const fetchLogs = () => {
             if (!db || !auth.currentUser) return;
             
-            // 모든 사용자의 로그를 조회하기 위한 컬렉션 그룹 쿼리
-            const logsCollectionGroup = collection(db, "visitor_logs");
+            // 모든 컬렉션에서 'visitor_logs' 컬렉션을 조회하는 Collection Group 쿼리
+            const logsCollectionGroup = collectionGroup(db, "visitor_logs");
             
-            // NOTE: Firestore Collection Group 쿼리는 'orderBy'를 명시해야 안정적으로 작동합니다.
-            // 최신 순으로 정렬하고(desc), 상위 100개만 가져옵니다.
+            // timestamp 내림차순 정렬 및 상위 100개 제한
             const q = query(
                 logsCollectionGroup, 
-                orderBy('timestamp', 'desc'), // <-- 이 부분을 추가했습니다.
+                orderBy('timestamp', 'desc'), 
                 limit(100) 
             ); 
 
@@ -214,58 +197,58 @@
                 const logs = [];
                 snapshot.forEach((doc) => {
                     const data = doc.data();
+                    
                     // 문서 경로에서 실제 userUid와 appId 추출
+                    // 경로 형식: artifacts/{appId}/users/{userUid}/visitor_logs/{docId}
                     const pathParts = doc.ref.path.split('/');
-                    const userUidFromDb = pathParts[3]; // /artifacts/{appId}/users/{userUid}/visitor_logs/{docId}
                     const appIdFromDb = pathParts[1];
+                    const userUidFromDb = pathParts[3];
                     
                     logs.push({ 
                         id: doc.id, 
-                        appId: appIdFromDb,
-                        userUid: userUidFromDb,
+                        appId: appIdFromDb, // 로그 삭제를 위해 필요
+                        userUid: userUidFromDb, // 로그 삭제를 위해 필요
                         ...data 
                     });
                 });
-                
-                // onSnapshot이 이미 정렬된 데이터를 주지만, 혹시 모를 경우를 대비하여 클라이언트 측 정렬은 제거했습니다.
-                // logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
                 
                 renderLogs(logs); // UI 렌더링
             }, (error) => {
                 console.error("로그 불러오기 오류:", error);
                 
-                // Firestore Collection Group Index 누락 오류에 대한 안내
-                // 'orderBy'를 추가했으므로, 이제는 색인이 실제로 필요하게 됩니다.
-                let errorMessage = `<p class="text-red-500 font-bold mt-4">로그 불러오기 오류 발생. <span class="text-yellow-400">개발자 콘솔(F12)을 확인</span>하여 <span class="text-yellow-400">Firestore 색인 생성 링크</span>를 클릭해 주세요.</p>`;
+                let errorMessage = `<p class="text-red-500 font-bold mt-4">로그 불러오기 오류 발생. <span class="text-yellow-400">개발자 콘솔(F12)을 확인</span>하여 에러 메시지를 확인해주세요.</p>`;
+                
+                // Firestore 색인 오류 메시지가 콘솔에 출력될 경우 사용자에게 안내
+                if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
+                    errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ Firestore 색인 오류: <span class="text-yellow-400">개발자 콘솔(F12)에 표시되는 색인 생성 링크</span>를 클릭하여 색인을 생성해 주세요.</p>`;
+                }
                 statusDiv.innerHTML = errorMessage;
             });
         };
         
         // 로그 삭제 (사용자 UID와 App ID를 포함한 정확한 경로 지정)
-        const deleteLog = async (docId, logAppId, logUserUid) => {
+        const deleteLog = async (docId, logUserUid) => {
             if (!db || !auth.currentUser) return;
             
-            // 정확한 문서 경로: /artifacts/{appId}/users/{userUid}/visitor_logs/{docId}
+            // 현재 로그인된 사용자가 아닌, 로그가 저장된 경로의 appId를 사용해야 함.
+            // 사용자님의 경우 projectId가 appId 역할을 하고 있습니다.
+            const logAppId = FIREBASE_CONFIG.projectId; 
+            
+            // 정확한 문서 경로: artifacts/{appId}/users/{userUid}/visitor_logs/{docId}
             const docRef = doc(db, `artifacts/${logAppId}/users/${logUserUid}/visitor_logs`, docId);
             
             try {
-                // 삭제 요청 시 UI 임시 업데이트
                 const btn = document.querySelector(`[data-doc-id="${docId}"]`);
-                // 버튼이 테이블에서 사라졌을 경우 에러 방지
                 if(btn) {
-                    const originalText = btn.textContent;
                     btn.textContent = '삭제 중...';
                     btn.disabled = true;
                 }
 
                 await deleteDoc(docRef);
                 console.log("문서 성공적으로 삭제됨:", docRef.path);
-                
-                // Firestore 리스너(onSnapshot)가 자동으로 테이블을 업데이트할 것입니다.
             } catch (error) {
                 console.error("로그 삭제 오류:", error);
-                // 모달/alert 대신 콘솔에 오류 기록 및 상태 표시
-                statusDiv.innerHTML = `<p class="text-red-500 font-bold mt-4">삭제 실패: ${error.message}. 콘솔을 확인하세요.</p>`;
+                statusDiv.innerHTML = `<p class="text-red-500 font-bold mt-4">삭제 실패: ${error.message}. 경로: ${docRef.path}</p>`;
             }
         };
 
@@ -287,7 +270,8 @@
 
         const handleConfirmDelete = () => {
             if (currentDeleteParams) {
-                deleteLog(currentDeleteParams.docId, currentDeleteParams.logAppId, currentDeleteParams.logUserUid);
+                // logAppId는 FIREBASE_CONFIG.projectId로 고정합니다.
+                deleteLog(currentDeleteParams.docId, currentDeleteParams.logUserUid);
             }
             hideModal();
         };
@@ -297,8 +281,8 @@
             const btn = event.currentTarget;
             const params = {
                 docId: btn.getAttribute('data-doc-id'),
-                logAppId: btn.getAttribute('data-app-id'),
                 logUserUid: btn.getAttribute('data-user-uid')
+                // appId는 deleteLog 함수 내에서 고정 값으로 사용합니다.
             };
 
             showModal("정말로 이 로그 기록을 삭제하시겠습니까?", params);
