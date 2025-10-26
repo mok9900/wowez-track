@@ -140,8 +140,8 @@
                  return;
             }
 
-            const truncateText = (text, maxLength = 20) => {
-                // null 또는 undefined 체크를 추가하여 오류 방지
+            const truncateText = (text, maxLength = 15) => {
+                // user_id를 위한 텍스트 자르기 함수
                 const safeText = text || ""; 
                 return safeText.length > maxLength ? safeText.substring(0, maxLength) + '...' : safeText;
             };
@@ -159,20 +159,21 @@
                 const row = document.createElement('tr');
                 row.className = 'border-b border-gray-700 hover:bg-gray-700 transition duration-150';
                 
-                // ⭐⭐⭐ 핵심 수정: Firestore 필드 이름에 맞게 데이터 참조 업데이트 ⭐⭐⭐
-                const displayUserId = log.user_id || log.userUid || 'N/A'; // user_id가 기본, 없으면 userUid 사용
-                const displayCountry = log.location_country || 'N/A'; // location_country로 수정
-                const displayISP = log.isp_info || 'N/A';           // isp_info로 수정
-                const displayIP = log.ip_address || 'N/A';          // ip_address는 그대로 유지
+                // Firestore 필드 이름에 맞게 데이터 참조 업데이트
+                const displayUserId = log.user_id || log.userUid || 'N/A';
+                const displayCountry = log.location_country || 'N/A';
+                const displayISP = log.isp_info || 'N/A';
+                const displayIP = log.ip_address || 'N/A';
 
 
                 row.innerHTML = `
                     <td class="p-4 text-sm text-gray-300 font-mono">${timeStr}</td>
-                    <td class="p-4 text-sm text-indigo-400 truncate max-w-xs" title="${displayUserId}">${truncateText(displayUserId, 15)}</td>
+                    <td class="p-4 text-sm text-indigo-400 truncate max-w-xs" title="${displayUserId}">${truncateText(displayUserId)}</td>
                     <td class="p-4 text-sm text-gray-300">${displayIP}</td>
                     <td class="p-4 text-sm text-gray-300">${displayCountry}</td>
                     <td class="p-4 text-sm text-gray-300">${displayISP}</td>
-                    <td class="p-4 text-sm text-gray-400 break-word" title="${log.user_agent}">${log.user_agent}</td>
+                    <!-- 핵심 수정: 줄바꿈 제거 (whitespace-nowrap) 및 오버플로우 시 말줄임표 (truncate) 적용 -->
+                    <td class="p-4 text-sm text-gray-400 truncate whitespace-nowrap overflow-hidden" title="${log.user_agent}">${log.user_agent}</td>
                     <td class="p-4 text-right">
                         <button 
                             class="delete-log-btn text-red-400 hover:text-red-500 font-medium transition duration-150 p-2 rounded-lg bg-gray-700 hover:bg-red-900/50"
@@ -364,12 +365,6 @@
             transform: translateX(26px);
         }
 
-        /* 텍스트 줄바꿈을 위한 커스텀 CSS */
-        .break-word {
-            word-break: break-word;
-            white-space: normal; /* 줄바꿈 허용 */
-        }
-
         /* 테이블의 고정 레이아웃을 사용하여 컬럼 너비를 확실하게 지정 */
         .table-fixed-layout {
             table-layout: fixed;
@@ -432,19 +427,14 @@
                 <table class="min-w-full divide-y divide-gray-700 table-fixed-layout">
                     <thead class="bg-gray-700 sticky top-0">
                         <tr>
-                            <!-- 시간: 1/6 (w-2/12) -->
+                            <!-- 컬럼 너비를 확실하게 지정합니다. (총 100%) -->
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[12%]">시간</th>
-                            <!-- 사용자 ID: 1/12 -->
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[12%]">사용자 ID</th>
-                            <!-- IP 주소: 1/12 -->
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[10%]">IP 주소</th>
-                            <!-- 국가: 1/12 -->
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[8%]">국가</th>
-                            <!-- ISP: 2/12 -->
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[16%]">ISP</th>
-                            <!-- 브라우저/기기 정보: 4/12 (가장 넓게) -->
+                            <!-- User Agent 컬럼: 텍스트를 자르지만, 너비는 고정 -->
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-[34%]">브라우저/기기 정보</th>
-                            <!-- 삭제: 1/12 -->
                             <th class="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider w-[8%]">삭제</th>
                         </tr>
                     </thead>
