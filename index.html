@@ -10,7 +10,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, deleteDoc, onSnapshot, collection, query, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, deleteDoc, onSnapshot, collection, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-lite.js";
 
         // Firestore 로그 레벨 설정 (디버깅용)
@@ -198,9 +198,16 @@
         const fetchLogs = () => {
             if (!db || !auth.currentUser) return;
             
-            // 모든 사용자의 로그를 조회하기 위한 컬렉션 그룹 쿼리 (Firestore 규칙 필수)
+            // 모든 사용자의 로그를 조회하기 위한 컬렉션 그룹 쿼리
             const logsCollectionGroup = collection(db, "visitor_logs");
-            const q = query(logsCollectionGroup, limit(100)); // 최신 100개만 가져오기
+            
+            // NOTE: Firestore Collection Group 쿼리는 'orderBy'를 명시해야 안정적으로 작동합니다.
+            // 최신 순으로 정렬하고(desc), 상위 100개만 가져옵니다.
+            const q = query(
+                logsCollectionGroup, 
+                orderBy('timestamp', 'desc'), // <-- 이 부분을 추가했습니다.
+                limit(100) 
+            ); 
 
             // onSnapshot 리스너를 통해 실시간 업데이트 처리
             onSnapshot(q, (snapshot) => {
@@ -220,14 +227,15 @@
                     });
                 });
                 
-                // 최신 순으로 정렬 (Timestamp 필드가 있다고 가정)
-                logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+                // onSnapshot이 이미 정렬된 데이터를 주지만, 혹시 모를 경우를 대비하여 클라이언트 측 정렬은 제거했습니다.
+                // logs.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
                 
                 renderLogs(logs); // UI 렌더링
             }, (error) => {
                 console.error("로그 불러오기 오류:", error);
                 
                 // Firestore Collection Group Index 누락 오류에 대한 안내
+                // 'orderBy'를 추가했으므로, 이제는 색인이 실제로 필요하게 됩니다.
                 let errorMessage = `<p class="text-red-500 font-bold mt-4">로그 불러오기 오류 발생. <span class="text-yellow-400">개발자 콘솔(F12)을 확인</span>하여 <span class="text-yellow-400">Firestore 색인 생성 링크</span>를 클릭해 주세요.</p>`;
                 statusDiv.innerHTML = errorMessage;
             });
@@ -243,9 +251,12 @@
             try {
                 // 삭제 요청 시 UI 임시 업데이트
                 const btn = document.querySelector(`[data-doc-id="${docId}"]`);
-                const originalText = btn.textContent;
-                btn.textContent = '삭제 중...';
-                btn.disabled = true;
+                // 버튼이 테이블에서 사라졌을 경우 에러 방지
+                if(btn) {
+                    const originalText = btn.textContent;
+                    btn.textContent = '삭제 중...';
+                    btn.disabled = true;
+                }
 
                 await deleteDoc(docRef);
                 console.log("문서 성공적으로 삭제됨:", docRef.path);
