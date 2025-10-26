@@ -55,6 +55,11 @@
         const totalLogsSpan = document.getElementById('total-logs');
         const timeToggleContainer = document.getElementById('time-format-toggle-container');
         const timeToggleInput = document.getElementById('time-format-toggle');
+        
+        // -- 커스텀 모달 관련 변수 --
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const modalMessage = document.getElementById('modal-message');
+        let currentDeleteParams = null; // {docId, logAppId, logUserUid}
 
 
         // Firebase 초기화 및 인증 리스너 설정
@@ -221,7 +226,10 @@
                 renderLogs(logs); // UI 렌더링
             }, (error) => {
                 console.error("로그 불러오기 오류:", error);
-                statusDiv.innerHTML = `<p class="text-red-500 font-bold mt-4">로그 불러오기 오류. 콘솔을 확인하십시오.</p>`;
+                
+                // Firestore Collection Group Index 누락 오류에 대한 안내
+                let errorMessage = `<p class="text-red-500 font-bold mt-4">로그 불러오기 오류 발생. <span class="text-yellow-400">개발자 콘솔(F12)을 확인</span>하여 <span class="text-yellow-400">Firestore 색인 생성 링크</span>를 클릭해 주세요.</p>`;
+                statusDiv.innerHTML = errorMessage;
             });
         };
         
@@ -245,22 +253,44 @@
                 // Firestore 리스너(onSnapshot)가 자동으로 테이블을 업데이트할 것입니다.
             } catch (error) {
                 console.error("로그 삭제 오류:", error);
-                alert(`로그 삭제 실패: ${error.message}`);
+                // 모달/alert 대신 콘솔에 오류 기록 및 상태 표시
+                statusDiv.innerHTML = `<p class="text-red-500 font-bold mt-4">삭제 실패: ${error.message}. 콘솔을 확인하세요.</p>`;
             }
         };
 
         // 전역 이벤트 핸들러 등록
         window.handleGoogleSignIn = handleGoogleSignIn;
         window.handleGoogleSignOut = () => signOut(auth);
+        
+        // -- 커스텀 모달 관련 함수 --
+        const showModal = (message, params) => {
+            modalMessage.textContent = message;
+            currentDeleteParams = params;
+            confirmationModal.classList.remove('hidden');
+        };
+
+        const hideModal = () => {
+            confirmationModal.classList.add('hidden');
+            currentDeleteParams = null;
+        };
+
+        const handleConfirmDelete = () => {
+            if (currentDeleteParams) {
+                deleteLog(currentDeleteParams.docId, currentDeleteParams.logAppId, currentDeleteParams.logUserUid);
+            }
+            hideModal();
+        };
+
+        // 로그 삭제 확인 모달 트리거
         window.handleDeleteClick = (event) => {
             const btn = event.currentTarget;
-            const docId = btn.getAttribute('data-doc-id');
-            const logAppId = btn.getAttribute('data-app-id');
-            const logUserUid = btn.getAttribute('data-user-uid');
-            
-            if (confirm("정말로 이 로그 기록을 삭제하시겠습니까?")) {
-                deleteLog(docId, logAppId, logUserUid);
-            }
+            const params = {
+                docId: btn.getAttribute('data-doc-id'),
+                logAppId: btn.getAttribute('data-app-id'),
+                logUserUid: btn.getAttribute('data-user-uid')
+            };
+
+            showModal("정말로 이 로그 기록을 삭제하시겠습니까?", params);
         };
 
         // 시간 형식 토글 이벤트 핸들러
@@ -268,6 +298,10 @@
             use12HourFormat = event.target.checked;
             renderLogs(currentLogs); // 시간 형식만 변경하여 테이블 재렌더링
         };
+        
+        // Make modal handlers available globally for inline onclick
+        window.hideModal = hideModal;
+        window.handleConfirmDelete = handleConfirmDelete;
 
         // 초기화 시작
         initFirebase();
@@ -399,5 +433,29 @@
             </div>
         </div>
     </div>
+    
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmation-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl shadow-2xl p-6 w-11/12 max-w-md transform transition-all duration-300">
+            <h3 class="text-xl font-bold text-red-400 mb-4">기록 삭제 확인</h3>
+            <p id="modal-message" class="text-gray-300 mb-6"></p>
+            <div class="flex justify-end space-x-3">
+                <button 
+                    onclick="hideModal()" 
+                    class="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-700 rounded-lg transition duration-150"
+                >
+                    취소
+                </button>
+                <button 
+                    id="confirm-delete-btn"
+                    onclick="handleConfirmDelete()"
+                    class="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition duration-150"
+                >
+                    삭제
+                </button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
