@@ -1,467 +1,468 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>방문자 로그 관리 시스템</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDK Modules -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, deleteDoc, onSnapshot, collectionGroup, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-lite.js";
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>방문자 로그 관리 시스템</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK Modules -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, deleteDoc, onSnapshot, collectionGroup, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-lite.js";
 
-        // Firestore 로그 레벨 설정 (디버깅용)
-        setLogLevel('Debug');
+        // Firestore 로그 레벨 설정 (디버깅용)
+        setLogLevel('Debug');
 
-        // 전역 변수 초기화
-        let app;
-        let auth;
-        let db;
-        let userId = 'unknown'; // 현재 로그인한 사용자 ID (UID)
-        let isManager = false; // 관리자 여부 플래그
-        let use12HourFormat = true; // 시간 표시 형식 (기본값: 12시간/AM/PM)
-        let currentLogs = []; // 현재 표시 중인 로그 데이터 배열
+        // 전역 변수 초기화
+        let app;
+        let auth;
+        let db;
+        let userId = 'unknown'; // 현재 로그인한 사용자 ID (UID)
+        let isManager = false; // 관리자 여부 플래그
+        let use12HourFormat = true; // 시간 표시 형식 (기본값: 12시간/AM/PM)
+        let currentLogs = []; // 현재 표시 중인 로그 데이터 배열
 
-        // Firebase 구성 객체 (사용자 제공 정보로 대체)
-        const FIREBASE_CONFIG = {
-            apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY",
-            authDomain: "track-ez-9ecb7.firebaseapp.com",
-            projectId: "track-ez-9ecb7",
-            storageBucket: "track-ez-9ecb7.firebasestorage.app",
-            messagingSenderId: "893851585207",
-            appId: "1:893851585207:web:ba248d9bcab0d793361b32",
-            measurementId: "G-E69E7TLNZN"
-        };
-        
-        // 관리자 권한을 가질 이메일 목록
-        const AUTHORIZED_USERS = [
-            "menda_427@naver.com",
-            "gs25q0818@gmail.com",
-            "gs25q0327@gmail.com"
-        ];
+        // Firebase 구성 객체 (사용자 제공 정보로 대체)
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyB1ApaFJIQWlS6dj9SGiviHyCMwlvD1mcY",
+            authDomain: "track-ez-9ecb7.firebaseapp.com",
+            projectId: "track-ez-9ecb7",
+            storageBucket: "track-ez-9ecb7.firebasestorage.app",
+            messagingSenderId: "893851585207",
+            appId: "1:893851585207:web:ba248d9bcab0d793361b32",
+            measurementId: "G-E69E7TLNZN"
+        };
+        
+        // 관리자 권한을 가질 이메일 목록
+        const AUTHORIZED_USERS = [
+            "menda_427@naver.com",
+            "gs25q0818@gmail.com",
+            "gs25q0327@gmail.com"
+        ];
 
-        // UI 요소
-        const statusDiv = document.getElementById('auth-status');
-        const loginButton = document.getElementById('google-login-btn');
-        const logoutButton = document.getElementById('google-logout-btn');
-        const adminDashboard = document.getElementById('admin-dashboard');
-        const logTableBody = document.getElementById('log-table-body');
-        const totalLogsSpan = document.getElementById('total-logs');
-        const timeToggleContainer = document.getElementById('time-format-toggle-container');
-        
-        // 커스텀 모달
-        const confirmationModal = document.getElementById('confirmation-modal');
-        const modalMessage = document.getElementById('modal-message');
-        let currentDeleteParams = null; // {docId, logUserUid}
-
-
-        // Firebase 초기화 및 인증 리스너 설정
-        const initFirebase = () => {
-            try {
-                // Firebase 초기화 (사용자 정의 설정 사용)
-                app = initializeApp(FIREBASE_CONFIG);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                // 인증 상태 변경 리스너
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        const userEmail = user.email;
-                        
-                        isManager = AUTHORIZED_USERS.includes(userEmail);
-                        
-                        updateUI(userEmail, isManager);
-
-                        if (isManager) {
-                            fetchLogs();
-                        } else {
-                            console.warn(`[접근 거부] 비인가된 관리자 접근 시도: ${userEmail}`);
-                        }
-                    } else {
-                        // 로그아웃 상태
-                        userId = 'unknown';
-                        isManager = false;
-                        updateUI(null, false);
-                    }
-                });
-
-            } catch (error) {
-                console.error("Firebase 초기화 오류:", error);
-                statusDiv.innerHTML = `<p class="text-red-500 font-bold">⛔ Firebase 초기화 오류: ${error.message}</p>`;
-                loginButton.disabled = true;
-            }
-        };
-
-        // Google 로그인 팝업 핸들러
-        const handleGoogleSignIn = async () => {
-            const provider = new GoogleAuthProvider();
-            try {
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                console.error("Google 팝업 로그인 오류:", error);
-                let errorMessage = `로그인 실패: ${error.message}`;
-                statusDiv.innerHTML = `<p class="text-red-400 font-bold mt-4 p-3 bg-gray-700 rounded-lg">${errorMessage}</p>`;
-            }
-        };
-        
-        // UI 상태 업데이트
-        const updateUI = (email, isManager) => {
-            loginButton.classList.add('hidden');
-            logoutButton.classList.add('hidden');
-            adminDashboard.classList.add('hidden');
-            timeToggleContainer.classList.add('hidden');
-            statusDiv.classList.remove('hidden');
-
-            if (isManager) {
-                statusDiv.innerHTML = `<p class="text-indigo-400 font-semibold">✅ 로그인 성공. 관리자(${email})</p>`;
-                adminDashboard.classList.remove('hidden');
-                logoutButton.classList.remove('hidden');
-                timeToggleContainer.classList.remove('hidden');
-            } else if (email) {
-                statusDiv.innerHTML = `<p class="text-red-500 font-bold">⛔ 접근 거부됨. 계정: ${email}. 관리자 권한이 없습니다.</p>`;
-                logoutButton.classList.remove('hidden');
-            } else {
-                statusDiv.innerHTML = `<p class="text-gray-400">로그인되지 않은 사용자입니다.</p>`;
-                loginButton.classList.remove('hidden');
-            }
-        };
-
-        // 로그를 테이블에 렌더링하는 함수
-        const renderLogs = (logs) => {
-            logTableBody.innerHTML = ''; 
-            totalLogsSpan.textContent = logs.length.toString();
-            
-            if (logs.length === 0) {
-                 logTableBody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-gray-500">조회된 기록이 없습니다.</td></tr>`;
-                 return;
-            }
-
-            const truncateText = (text, maxLength = 20) => {
-                // null 또는 undefined 체크를 추가하여 오류 방지
-                const safeText = text || ""; 
-                return safeText.length > maxLength ? safeText.substring(0, maxLength) + '...' : safeText;
-            };
-
-            logs.forEach(log => {
-                const dateOptions = { 
-                    year: 'numeric', month: 'numeric', day: 'numeric', 
-                    hour: '2-digit', minute: '2-digit', second: '2-digit', 
-                    hour12: use12HourFormat 
-                };
-                
-                // Firestore Timestamp 객체를 Date 객체로 변환
-                const timeStr = log.timestamp.toDate().toLocaleString('ko-KR', dateOptions);
-
-                const row = document.createElement('tr');
-                row.className = 'border-b border-gray-700 hover:bg-gray-700 transition duration-150';
-                
-                const displayUserId = log.userId || log.userUid || 'N/A'; // userId가 없으면 userUid 사용
-                const displayCountry = log.country || 'N/A';
-                const displayISP = log.isp || 'N/A';
-                const displayIP = log.ipAddress || 'N/A';
+        // UI 요소
+        const statusDiv = document.getElementById('auth-status');
+        const loginButton = document.getElementById('google-login-btn');
+        const logoutButton = document.getElementById('google-logout-btn');
+        const adminDashboard = document.getElementById('admin-dashboard');
+        const logTableBody = document.getElementById('log-table-body');
+        const totalLogsSpan = document.getElementById('total-logs');
+        const timeToggleContainer = document.getElementById('time-format-toggle-container');
+        
+        // 커스텀 모달
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const modalMessage = document.getElementById('modal-message');
+        let currentDeleteParams = null; // {docId, logUserUid}
 
 
-                row.innerHTML = `
-                    <td class="p-4 whitespace-nowrap text-sm text-gray-300 font-mono">${timeStr}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-indigo-400 truncate max-w-xs" title="${displayUserId}">${truncateText(displayUserId, 15)}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayIP}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayCountry}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayISP}</td>
-                    <td class="p-4 whitespace-nowrap text-sm text-gray-400 truncate max-w-xs" title="${log.userAgent}">${truncateText(log.userAgent, 30)}</td>
-                    <td class="p-4 whitespace-nowrap text-right">
-                        <button 
-                            class="delete-log-btn text-red-400 hover:text-red-500 font-medium transition duration-150 p-2 rounded-lg bg-gray-700 hover:bg-red-900/50"
-                            data-doc-id="${log.id}"
-                            data-user-uid="${log.userUid}"
-                            onclick="handleDeleteClick(event)"
-                        >
-                            삭제
-                        </button>
-                    </td>
-                `;
-                logTableBody.appendChild(row);
-            });
-            currentLogs = logs; 
-        };
+        // Firebase 초기화 및 인증 리스너 설정
+        const initFirebase = () => {
+            try {
+                // Firebase 초기화 (사용자 정의 설정 사용)
+                app = initializeApp(FIREBASE_CONFIG);
+                auth = getAuth(app);
+                db = getFirestore(app);
 
-        // 실시간 로그 데이터 가져오기 (onSnapshot)
-        const fetchLogs = () => {
-            if (!db || !auth.currentUser) {
-                totalLogsSpan.textContent = 'N/A'; // 인증이 안되면 N/A
-                return;
-            }
-            
-            const logsCollectionGroup = collectionGroup(db, "visitor_logs");
-            
-            const q = query(
-                logsCollectionGroup, 
-                orderBy('timestamp', 'desc'), 
-                limit(100) 
-            ); 
+                // 인증 상태 변경 리스너
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        const userEmail = user.email;
+                        
+                        isManager = AUTHORIZED_USERS.includes(userEmail);
+                        
+                        updateUI(userEmail, isManager);
 
-            onSnapshot(q, (snapshot) => {
-                const logs = [];
-                snapshot.forEach((doc) => {
-                    const data = doc.data();
-                    
-                    const pathParts = doc.ref.path.split('/');
-                    const appIdFromDb = pathParts[1];
-                    const userUidFromDb = pathParts[3];
-                    
-                    logs.push({ 
-                        id: doc.id, 
-                        appId: appIdFromDb, 
-                        userUid: userUidFromDb, 
-                        ...data 
-                    });
-                });
-                
-                renderLogs(logs); 
-            }, (error) => {
-                console.error("로그 불러오기 오류:", error);
-                
-                totalLogsSpan.textContent = 'N/A';
-                
-                let errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ 로그 불러오기 실패: ${error.message}.</p>`;
-                
-                if (error.code === 'permission-denied') {
-                     errorMessage = `<p class="text-red-500 font-bold mt-4">🛑 Firestore 권한 오류: 관리자가 <span class="text-yellow-400">Firebase 규칙</span>을 수정하여 모든 사용자의 로그를 <span class="text-yellow-400">읽을 수 있도록</span> 허용해야 합니다. 콘솔을 확인하세요.</p>`;
-                } else if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
-                    errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ Firestore 색인 오류: <span class="text-yellow-400">개발자 콘솔(F12)에 표시되는 색인 생성 링크</span>를 클릭하여 색인을 생성해 주세요. (이미 완료된 상태일 수 있습니다.)</p>`;
-                } else if (error instanceof TypeError) {
-                    errorMessage = `<p class="text-red-500 font-bold mt-4">🚨 데이터 처리 오류: 로그 데이터 구조가 잘못되었습니다. 콘솔에서 로그의 필드를 확인하세요.</p>`;
-                }
-                
-                statusDiv.innerHTML = errorMessage;
-            });
-        };
-        
-        // 로그 삭제 
-        const deleteLog = async (docId, logUserUid) => {
-            if (!db || !auth.currentUser) return;
-            
-            // 삭제를 위한 AppId는 Firebase 프로젝트 ID로 고정합니다.
-            const logAppId = FIREBASE_CONFIG.projectId; 
-            
-            // 정확한 문서 경로: artifacts/{appId}/users/{userUid}/visitor_logs/{docId}
-            const docRef = doc(db, `artifacts/${logAppId}/users/${logUserUid}/visitor_logs`, docId);
-            
-            try {
-                const btn = document.querySelector(`[data-doc-id="${docId}"]`);
-                if(btn) {
-                    btn.textContent = '삭제 중...';
-                    btn.disabled = true;
-                }
+                        if (isManager) {
+                            fetchLogs();
+                        } else {
+                            console.warn(`[접근 거부] 비인가된 관리자 접근 시도: ${userEmail}`);
+                        }
+                    } else {
+                        // 로그아웃 상태
+                        userId = 'unknown';
+                        isManager = false;
+                        updateUI(null, false);
+                    }
+                });
 
-                await deleteDoc(docRef);
-                console.log("문서 성공적으로 삭제됨:", docRef.path);
-            } catch (error) {
-                console.error("로그 삭제 오류:", error);
-                statusDiv.innerHTML = `<p class="text-red-500 font-bold mt-4">삭제 실패: ${error.message}. 경로: ${docRef.path}</p>`;
-            }
-        };
+            } catch (error) {
+                console.error("Firebase 초기화 오류:", error);
+                statusDiv.innerHTML = `<p class="text-red-500 font-bold">⛔ Firebase 초기화 오류: ${error.message}</p>`;
+                loginButton.disabled = true;
+            }
+        };
 
-        // 전역 이벤트 핸들러 등록
-        window.handleGoogleSignIn = handleGoogleSignIn;
-        window.handleGoogleSignOut = () => signOut(auth);
-        
-        // -- 커스텀 모달 관련 함수 --
-        const showModal = (message, params) => {
-            modalMessage.textContent = message;
-            currentDeleteParams = params;
-            confirmationModal.classList.remove('hidden');
-        };
+        // Google 로그인 팝업 핸들러
+        const handleGoogleSignIn = async () => {
+            const provider = new GoogleAuthProvider();
+            try {
+                await signInWithPopup(auth, provider);
+            } catch (error) {
+                console.error("Google 팝업 로그인 오류:", error);
+                let errorMessage = `로그인 실패: ${error.message}`;
+                statusDiv.innerHTML = `<p class="text-red-400 font-bold mt-4 p-3 bg-gray-700 rounded-lg">${errorMessage}</p>`;
+            }
+        };
+        
+        // UI 상태 업데이트
+        const updateUI = (email, isManager) => {
+            loginButton.classList.add('hidden');
+            logoutButton.classList.add('hidden');
+            adminDashboard.classList.add('hidden');
+            timeToggleContainer.classList.add('hidden');
+            statusDiv.classList.remove('hidden');
 
-        const hideModal = () => {
-            confirmationModal.classList.add('hidden');
-            currentDeleteParams = null;
-        };
+            if (isManager) {
+                statusDiv.innerHTML = `<p class="text-indigo-400 font-semibold">✅ 로그인 성공. 관리자(${email})</p>`;
+                adminDashboard.classList.remove('hidden');
+                logoutButton.classList.remove('hidden');
+                timeToggleContainer.classList.remove('hidden');
+            } else if (email) {
+                statusDiv.innerHTML = `<p class="text-red-500 font-bold">⛔ 접근 거부됨. 계정: ${email}. 관리자 권한이 없습니다.</p>`;
+                logoutButton.classList.remove('hidden');
+            } else {
+                statusDiv.innerHTML = `<p class="text-gray-400">로그인되지 않은 사용자입니다.</p>`;
+                loginButton.classList.remove('hidden');
+            }
+        };
 
-        const handleConfirmDelete = () => {
-            if (currentDeleteParams) {
-                deleteLog(currentDeleteParams.docId, currentDeleteParams.logUserUid);
-            }
-            hideModal();
-        };
+        // 로그를 테이블에 렌더링하는 함수
+        const renderLogs = (logs) => {
+            logTableBody.innerHTML = ''; 
+            totalLogsSpan.textContent = logs.length.toString();
+            
+            if (logs.length === 0) {
+                 logTableBody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-gray-500">조회된 기록이 없습니다.</td></tr>`;
+                 return;
+            }
 
-        // 로그 삭제 확인 모달 트리거
-        window.handleDeleteClick = (event) => {
-            const btn = event.currentTarget;
-            const params = {
-                docId: btn.getAttribute('data-doc-id'),
-                logUserUid: btn.getAttribute('data-user-uid')
-            };
+            const truncateText = (text, maxLength = 20) => {
+                // null 또는 undefined 체크를 추가하여 오류 방지
+                const safeText = text || ""; 
+                return safeText.length > maxLength ? safeText.substring(0, maxLength) + '...' : safeText;
+            };
 
-            showModal("정말로 이 로그 기록을 삭제하시겠습니까?", params);
-        };
+            logs.forEach(log => {
+                const dateOptions = { 
+                    year: 'numeric', month: 'numeric', day: 'numeric', 
+                    hour: '2-digit', minute: '2-digit', second: '2-digit', 
+                    hour12: use12HourFormat 
+                };
+                
+                // Firestore Timestamp 객체를 Date 객체로 변환
+                const timeStr = log.timestamp.toDate().toLocaleString('ko-KR', dateOptions);
 
-        // 시간 형식 토글 이벤트 핸들러
-        window.handleTimeToggleChange = (event) => {
-            use12HourFormat = event.target.checked;
-            renderLogs(currentLogs); // 시간 형식만 변경하여 테이블 재렌더링
-        };
-        
-        // Make modal handlers available globally for inline onclick
-        window.hideModal = hideModal;
-        window.handleConfirmDelete = handleConfirmDelete;
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-700 hover:bg-gray-700 transition duration-150';
+                
+                // ⭐⭐⭐ 핵심 수정: Firestore 필드 이름에 맞게 데이터 참조 업데이트 ⭐⭐⭐
+                const displayUserId = log.user_id || log.userUid || 'N/A'; // user_id가 기본, 없으면 userUid 사용
+                const displayCountry = log.location_country || 'N/A'; // location_country로 수정
+                const displayISP = log.isp_info || 'N/A';           // isp_info로 수정
+                const displayIP = log.ip_address || 'N/A';          // ip_address는 그대로 유지
 
-        // 초기화 시작
-        initFirebase();
-    </script>
-    <style>
-        /* 폰트 설정 */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
 
-        /* 토글 스위치 디자인 */
-        .toggle-switch {
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 34px;
-        }
+                row.innerHTML = `
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-300 font-mono">${timeStr}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-indigo-400 truncate max-w-xs" title="${displayUserId}">${truncateText(displayUserId, 15)}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayIP}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayCountry}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-300">${displayISP}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-400 truncate max-w-xs" title="${log.user_agent}">${truncateText(log.user_agent, 30)}</td>
+                    <td class="p-4 whitespace-nowrap text-right">
+                        <button 
+                            class="delete-log-btn text-red-400 hover:text-red-500 font-medium transition duration-150 p-2 rounded-lg bg-gray-700 hover:bg-red-900/50"
+                            data-doc-id="${log.id}"
+                            data-user-uid="${log.userUid}"
+                            onclick="handleDeleteClick(event)"
+                        >
+                            삭제
+                        </button>
+                    </td>
+                `;
+                logTableBody.appendChild(row);
+            });
+            currentLogs = logs; 
+        };
 
-        .toggle-switch input { 
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
+        // 실시간 로그 데이터 가져오기 (onSnapshot)
+        const fetchLogs = () => {
+            if (!db || !auth.currentUser) {
+                totalLogsSpan.textContent = 'N/A'; // 인증이 안되면 N/A
+                return;
+            }
+            
+            const logsCollectionGroup = collectionGroup(db, "visitor_logs");
+            
+            const q = query(
+                logsCollectionGroup, 
+                orderBy('timestamp', 'desc'), 
+                limit(100) 
+            ); 
 
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #4B5563; /* Gray-600 */
-            transition: .4s;
-            border-radius: 34px;
-        }
+            onSnapshot(q, (snapshot) => {
+                const logs = [];
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    
+                    const pathParts = doc.ref.path.split('/');
+                    const appIdFromDb = pathParts[1];
+                    const userUidFromDb = pathParts[3];
+                    
+                    logs.push({ 
+                        id: doc.id, 
+                        appId: appIdFromDb, 
+                        userUid: userUidFromDb, 
+                        ...data 
+                    });
+                });
+                
+                renderLogs(logs); 
+            }, (error) => {
+                console.error("로그 불러오기 오류:", error);
+                
+                totalLogsSpan.textContent = 'N/A';
+                
+                let errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ 로그 불러오기 실패: ${error.message}.</p>`;
+                
+                if (error.code === 'permission-denied') {
+                     errorMessage = `<p class="text-red-500 font-bold mt-4">🛑 Firestore 권한 오류: 관리자가 <span class="text-yellow-400">Firebase 규칙</span>을 수정하여 모든 사용자의 로그를 <span class="text-yellow-400">읽을 수 있도록</span> 허용해야 합니다. 콘솔을 확인하세요.</p>`;
+                } else if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
+                    errorMessage = `<p class="text-red-500 font-bold mt-4">⚠️ Firestore 색인 오류: <span class="text-yellow-400">개발자 콘솔(F12)에 표시되는 색인 생성 링크</span>를 클릭하여 색인을 생성해 주세요. (이미 완료된 상태일 수 있습니다.)</p>`;
+                } else if (error instanceof TypeError) {
+                    errorMessage = `<p class="text-red-500 font-bold mt-4">🚨 데이터 처리 오류: 로그 데이터 구조가 잘못되었습니다. 콘솔에서 로그의 필드를 확인하세요.</p>`;
+                }
+                
+                statusDiv.innerHTML = errorMessage;
+            });
+        };
+        
+        // 로그 삭제 
+        const deleteLog = async (docId, logUserUid) => {
+            if (!db || !auth.currentUser) return;
+            
+            // 삭제를 위한 AppId는 Firebase 프로젝트 ID로 고정합니다.
+            const logAppId = FIREBASE_CONFIG.projectId; 
+            
+            // 정확한 문서 경로: artifacts/{appId}/users/{userUid}/visitor_logs/{docId}
+            const docRef = doc(db, `artifacts/${logAppId}/users/${logUserUid}/visitor_logs`, docId);
+            
+            try {
+                const btn = document.querySelector(`[data-doc-id="${docId}"]`);
+                if(btn) {
+                    btn.textContent = '삭제 중...';
+                    btn.disabled = true;
+                }
 
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 26px;
-            width: 26px;
-            left: 4px;
-            bottom: 4px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
+                await deleteDoc(docRef);
+                console.log("문서 성공적으로 삭제됨:", docRef.path);
+            } catch (error) {
+                console.error("로그 삭제 오류:", error);
+                statusDiv.innerHTML = `<p class="text-red-500 font-bold mt-4">삭제 실패: ${error.message}. 경로: ${docRef.path}</p>`;
+            }
+        };
 
-        input:checked + .slider {
-            background-color: #4F46E5; /* Indigo-600 */
-        }
+        // 전역 이벤트 핸들러 등록
+        window.handleGoogleSignIn = handleGoogleSignIn;
+        window.handleGoogleSignOut = () => signOut(auth);
+        
+        // -- 커스텀 모달 관련 함수 --
+        const showModal = (message, params) => {
+            modalMessage.textContent = message;
+            currentDeleteParams = params;
+            confirmationModal.classList.remove('hidden');
+        };
 
-        input:checked + .slider:before {
-            transform: translateX(26px);
-        }
-    </style>
+        const hideModal = () => {
+            confirmationModal.classList.add('hidden');
+            currentDeleteParams = null;
+        };
+
+        const handleConfirmDelete = () => {
+            if (currentDeleteParams) {
+                deleteLog(currentDeleteParams.docId, currentDeleteParams.logUserUid);
+            }
+            hideModal();
+        };
+
+        // 로그 삭제 확인 모달 트리거
+        window.handleDeleteClick = (event) => {
+            const btn = event.currentTarget;
+            const params = {
+                docId: btn.getAttribute('data-doc-id'),
+                logUserUid: btn.getAttribute('data-user-uid')
+            };
+
+            showModal("정말로 이 로그 기록을 삭제하시겠습니까?", params);
+        };
+
+        // 시간 형식 토글 이벤트 핸들러
+        window.handleTimeToggleChange = (event) => {
+            use12HourFormat = event.target.checked;
+            renderLogs(currentLogs); // 시간 형식만 변경하여 테이블 재렌더링
+        };
+        
+        // Make modal handlers available globally for inline onclick
+        window.hideModal = hideModal;
+        window.handleConfirmDelete = handleConfirmDelete;
+
+        // 초기화 시작
+        initFirebase();
+    </script>
+    <style>
+        /* 폰트 설정 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+
+        /* 토글 스위치 디자인 */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle-switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #4B5563; /* Gray-600 */
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #4F46E5; /* Indigo-600 */
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+    </style>
 </head>
 <body class="bg-slate-900 text-white min-h-screen p-4 sm:p-8">
 
-    <div class="max-w-7xl mx-auto">
-        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-indigo-500/50 pb-4 mb-6">
-            <h1 class="text-3xl font-extrabold text-indigo-400 tracking-wider">방문자 로그 관리 시스템</h1>
-            <div class="mt-4 sm:mt-0 flex items-center space-x-3">
-                
-                <!-- 로그아웃 버튼 (인증 시 표시) -->
-                <button 
-                    id="google-logout-btn" 
-                    onclick="handleGoogleSignOut()" 
-                    class="hidden px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-lg transition duration-150"
-                >
-                    로그아웃
-                </button>
-                
-                <!-- 시간 형식 토글 (관리자 로그인 시 표시) -->
-                <div id="time-format-toggle-container" class="hidden flex items-center space-x-3">
-                    <span class="text-xs font-medium text-gray-400">24시간</span>
-                    <label class="toggle-switch">
-                        <input id="time-format-toggle" type="checkbox" checked onchange="handleTimeToggleChange(event)">
-                        <span class="slider"></span>
-                    </label>
-                    <span class="text-xs font-medium text-indigo-400">AM/PM</span>
-                </div>
-            </div>
-        </header>
+    <div class="max-w-7xl mx-auto">
+        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-indigo-500/50 pb-4 mb-6">
+            <h1 class="text-3xl font-extrabold text-indigo-400 tracking-wider">방문자 로그 관리 시스템</h1>
+            <div class="mt-4 sm:mt-0 flex items-center space-x-3">
+                
+                <!-- 로그아웃 버튼 (인증 시 표시) -->
+                <button 
+                    id="google-logout-btn" 
+                    onclick="handleGoogleSignOut()" 
+                    class="hidden px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-lg transition duration-150"
+                >
+                    로그아웃
+                </button>
+                
+                <!-- 시간 형식 토글 (관리자 로그인 시 표시) -->
+                <div id="time-format-toggle-container" class="hidden flex items-center space-x-3">
+                    <span class="text-xs font-medium text-gray-400">24시간</span>
+                    <label class="toggle-switch">
+                        <input id="time-format-toggle" type="checkbox" checked onchange="handleTimeToggleChange(event)">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="text-xs font-medium text-indigo-400">AM/PM</span>
+                </div>
+            </div>
+        </header>
 
-        <!-- 인증 상태 및 로그인 버튼 -->
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-800 p-6 rounded-xl shadow-2xl mb-6">
-            <div id="auth-status" class="text-lg text-gray-400">
-                로그인 중...
-            </div>
-            <button 
-                id="google-login-btn" 
-                onclick="handleGoogleSignIn()" 
-                class="mt-4 sm:mt-0 px-6 py-3 text-lg font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-xl transition duration-300 transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-                Google 계정으로 로그인
-            </button>
-        </div>
-        
-        <!-- 관리자 대시보드 영역 -->
-        <div id="admin-dashboard" class="hidden">
-            <h2 class="text-2xl font-bold text-gray-200 mb-4 border-b border-gray-700 pb-2">방문자 기록</h2>
-            
-            <div class="text-gray-400 mb-4">
-                총 <span id="total-logs" class="text-indigo-400 font-bold">0</span>개 기록
-            </div>
+        <!-- 인증 상태 및 로그인 버튼 -->
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-800 p-6 rounded-xl shadow-2xl mb-6">
+            <div id="auth-status" class="text-lg text-gray-400">
+                로그인 중...
+            </div>
+            <button 
+                id="google-login-btn" 
+                onclick="handleGoogleSignIn()" 
+                class="mt-4 sm:mt-0 px-6 py-3 text-lg font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-xl transition duration-300 transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+                Google 계정으로 로그인
+            </button>
+        </div>
+        
+        <!-- 관리자 대시보드 영역 -->
+        <div id="admin-dashboard" class="hidden">
+            <h2 class="text-2xl font-bold text-gray-200 mb-4 border-b border-gray-700 pb-2">방문자 기록</h2>
+            
+            <div class="text-gray-400 mb-4">
+                총 <span id="total-logs" class="text-indigo-400 font-bold">0</span>개 기록
+            </div>
 
-            <!-- 로그 테이블 -->
-            <div class="overflow-x-auto bg-gray-800 rounded-xl shadow-2xl">
-                <table class="min-w-full divide-y divide-gray-700">
-                    <thead class="bg-gray-700 sticky top-0">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/6">시간</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/6">사용자 ID</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/12">IP 주소</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/12">국가</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/12">ISP</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-2/6">브라우저/기기 정보</th>
-                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider w-1/12">삭제</th>
-                        </tr>
-                    </thead>
-                    <tbody id="log-table-body" class="divide-y divide-gray-700/50">
-                        <!-- 로그 데이터가 여기에 로드됩니다 -->
-                    </tbody>
-                </table>
-            </div>
+            <!-- 로그 테이블 -->
+            <div class="overflow-x-auto bg-gray-800 rounded-xl shadow-2xl">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-gray-700 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/6">시간</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/6">사용자 ID</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/12">IP 주소</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/12">국가</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/12">ISP</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-2/6">브라우저/기기 정보</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider w-1/12">삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-table-body" class="divide-y divide-gray-700/50">
+                        <!-- 로그 데이터가 여기에 로드됩니다 -->
+                    </tbody>
+                </table>
+            </div>
 
-            <div class="mt-4 text-center text-gray-500 text-sm">
-                최대 100개 기록이 표시됩니다.
-            </div>
-        </div>
-    </div>
-    
-    <!-- Custom Confirmation Modal -->
-    <div id="confirmation-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-        <div class="bg-gray-800 rounded-xl shadow-2xl p-6 w-11/12 max-w-md transform transition-all duration-300">
-            <h3 class="text-xl font-bold text-red-400 mb-4">기록 삭제 확인</h3>
-            <p id="modal-message" class="text-gray-300 mb-6"></p>
-            <div class="flex justify-end space-x-3">
-                <button 
-                    onclick="hideModal()" 
-                    class="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-700 rounded-lg transition duration-150"
-                >
-                    취소
-                </button>
-                <button 
-                    id="confirm-delete-btn"
-                    onclick="handleConfirmDelete()"
-                    class="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition duration-150"
-                >
-                    삭제
-                </button>
-            </div>
-        </div>
-    </div>
+            <div class="mt-4 text-center text-gray-500 text-sm">
+                최대 100개 기록이 표시됩니다.
+            </div>
+        </div>
+    </div>
+    
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmation-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl shadow-2xl p-6 w-11/12 max-w-md transform transition-all duration-300">
+            <h3 class="text-xl font-bold text-red-400 mb-4">기록 삭제 확인</h3>
+            <p id="modal-message" class="text-gray-300 mb-6"></p>
+            <div class="flex justify-end space-x-3">
+                <button 
+                    onclick="hideModal()" 
+                    class="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 hover:bg-gray-700 rounded-lg transition duration-150"
+                >
+                    취소
+                </button>
+                <button 
+                    id="confirm-delete-btn"
+                    onclick="handleConfirmDelete()"
+                    class="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition duration-150"
+                >
+                    삭제
+                </button>
+            </div>
+        </div>
+    </div>
 
 </body>
 </html>
